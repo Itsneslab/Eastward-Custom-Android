@@ -1,0 +1,34 @@
+# Build artifacts, APKs, and signing keys (never committed)
+build-apk/
+build-arm64/
+out/
+*.apk
+*.apks
+*.idsig
+*.keystore
+*.jks
+*.o
+*.a
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Game dumps, decryption keys, extracted RomFS/ExeFS, and runtime shader dumps (never committed)
+*.nsp
+*.xci
+*.nca
+*.keys
+*.patched.bin
+*.glslc
+glslc_capture/
+RomFS/
+ExeFS/
+romfs/
+exefs/
+Dump/
+saves/
+
+# Precompiled native Python/toolchain blobs and non-OSS system fonts
+prebuilt/arm64-v8a/
+prebuilt/assets/*.zip
+prebuilt/assets/font/standard.ttf

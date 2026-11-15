@@ -1,0 +1,30 @@
+Eastward Custom (Android)
+Copyright (c) 2026 Itsneslab (Eastward-Custom-Android contributors)
+Copyright (c) 2026 jhaizhou (d2r-mobile, nxnative)
+Copyright (c) 2026 the Galar Native (formerly PKShield Android) contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE for details.
+
+Upstream runtime portions derived from d2r-mobile / nxnative and early Galar Native
+code remain additionally available under the MIT License (see LICENSE-MIT).
+Third-party libraries located under `dm/third_party/` (bcdec, libadrenotools,
+libvpx, stb_vorbis, Vulkan-Headers) retain their respective upstream open-source licenses.
+
+Legal & Copyright Compliance Notice:
+- This repository contains ONLY source code, UI resources, shader translation tooling,
+  and original vector icon assets.
+- No copyrighted Nintendo Switch game dumps (.nsp / .xci / .nca), decryption keys
+  (prod.keys / title.keys), extracted RomFS/ExeFS data, compiled game shaders (.glslc),
+  or proprietary system fonts are distributed in this repository.
+- Users must supply backups dumped from their own legally owned copy of Eastward
+  (Title ID 010071B00F63A000) and their own console keys.
+- Nintendo Switch is a trademark of Nintendo Co., Ltd.; Eastward is a trademark of
+  Pixpil / Chucklefish. This independent compatibility runtime is not affiliated with
+  or endorsed by Nintendo, Pixpil, or Chucklefish.
