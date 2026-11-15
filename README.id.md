@@ -26,6 +26,7 @@
 - [Struktur Project](#struktur-project)
 - [Panduan Setup di HP & Kontrol Layar](#panduan-setup-di-hp--kontrol-layar)
 - [Cara Build Dari Source Code](#cara-build-dari-source-code)
+- [Catatan Sejarah & Konteks Lengkap Proyek](PROJECT_NOTES.md)
 - [Kontributor & Kredit](#kontributor--kredit)
 - [Lisensi & Pemberitahuan Hukum](#lisensi--pemberitahuan-hukum)
 
@@ -45,18 +46,17 @@ Eksperimen komunitas sebelumnya membungkus _Eastward_ di dalam kerangka proyek g
 
 ## Cara Kerja vs Emulator vs NSXRecomp vs DroidPlay
 
-Banyak port komunitas lain (seperti proyek Pokémon Switch di Android) menyebut **DroidPlay** atau **NSXRecomp**. Berikut perbedaan teknisnya dibanding **Eastward Custom**:
+Banyak port komunitas lain (seperti proyek Pokémon Switch di Android) menyebut **DroidPlay** atau **NSXRecomp**. Berikut posisi sebenarnya **Eastward Custom (v3)**:
 
 | Pendekatan / Proyek | Model Eksekusi CPU/Binary | Pipeline Grafis | Dipakai di Eastward Custom? |
 | :--- | :--- | :--- | :--- |
 | **Emulator Tradisional** (Yuzu, Ryujinx, dll.) | Virtualisasi JIT / NCE penuh terhadap seluruh OS & hardware Switch | Dekompilasi shader saat runtime + emulasi GPU berat | **Tidak** |
 | **NSXRecomp / nxrecomp** | **Rekompilasi Statis**: mengangkat kode mesin AArch64 Switch menjadi source code **C++**, lalu dikompilasi ulang dengan Clang/NDK | Backend translasi grafis khusus | **Tidak** |
-| **DroidPlay (`droidnative` / `nx2android`)** | Layer kompatibilitas komunitas yang terinspirasi `nxnative` untuk menjalankan banyak judul Switch secara native di Android | Layanan HLE gaya `nxnative` & backend Vulkan | **Tidak** (basis kode terpisah) |
-| **Eastward Custom (Repo ini — runtime `dm`)** | **Runtime Biner ARM64 Langsung (turunan `dm` / `nxnative`)**: melakukan patch relokasi NSO langsung di HP (`patch_nso.py` / `loader.c`) dan mengeksekusi instruksi ARM64 secara langsung di atas layanan HLE C Horizon OS (`dm/host/hle_*.c`) | Renderer langsung **NVN-ke-Vulkan** (`gfx_vk.c`, `gfx_vk_*.inc`) + translator **SPIR-V** Python (`spv_android.py`) | **Ya — 100% mandiri di dalam repo ini** |
+| **DroidPlay Core (`dpc` / `dm` — `droidplay-core-0.8.10`)** | **Runtime Biner ARM64 Langsung (`dm`)**: melakukan patch relokasi NSO langsung di HP (`patch_nso.py` / `loader.c`) dan mengeksekusi instruksi ARM64 secara langsung di atas layanan HLE C Horizon OS (`dm/host/hle_*.c`) | Renderer langsung **NVN-ke-Vulkan** (`gfx_vk.c`, `gfx_vk_*.inc`) + translator **SPIR-V** (`spv_build.py` / `spv_android.py` / `libdmsh_xlate.so`) | **Ya — menjadi mesin inti v3!** |
 
-### Kenapa Eastward Custom tidak memakai NSXRecomp atau DroidPlay?
-1. **HP Android sudah berarsitektur ARM64 (`arm64-v8a`):** Sama seperti konsep `nxnative`, engine `dm` mengeksekusi instruksi AArch64 game langsung di user-space Android setelah relokasi alamat dan fixup ABI — sehingga bebas dari beban terjemahan CPU emulator **sekaligus** tidak perlu membangkitkan jutaan baris C++ hasil lifting statis seperti `NSXRecomp`.
-2. **Pipeline Shader & HLE Khusus Eastward:** Folder `dm/games/010071B00F63A000/` menyimpan manifest PSO, fakta descriptor, dan fingerprint chain `dmsh_chain.h` (`EXPECTED_CHAIN = 1a0d0a59a263`) **tanpa** menyertakan shader berhak cipta, sehingga HP pengguna langsung mengonversi shader dari file `.nsp` milik pengguna sendiri menjadi SPIR-V siap jalan saat Setup.
+### Bagaimana v3 memadukan DroidPlay Core (`dm`) dengan Shell Kustom Eastward?
+1. **Kenapa pakai DroidPlay Core (`dm`) alih-alih NSXRecomp?** HP Android sudah berarsitektur `arm64-v8a`. `DroidPlay Core` (`dm`) menjalankan instruksi AArch64 game langsung di user-space Android setelah relokasi alamat dan fixup ABI — bebas dari beban virtualisasi emulator **sekaligus** tidak perlu membangkitkan jutaan baris C++ hasil lifting statis seperti `NSXRecomp`.
+2. **Kenapa membangun shell v3 baru alih-alih melanjutkan fork v2?** Eksperimen v2 sebelumnya memakai cangkang komunitas turunan Pokémon (`Galar-Native`), sehingga membawa beban tambahan, kedip kontroler, dan hack game lain. **Eastward Custom (v3)** mempertahankan **mesin & backend Vulkan `DroidPlay` (`dm`) yang ringan & kencang**, lalu mengganti UI Android, kontrol SVG, serta setup `.nsp` + `prod.keys` khusus untuk Title ID `010071B00F63A000` (`dm/games/010071B00F63A000/`, `EXPECTED_CHAIN = 1a0d0a59a263`).
 
 ---
 

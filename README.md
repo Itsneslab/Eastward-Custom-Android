@@ -26,6 +26,7 @@
 - [Project Structure](#project-structure)
 - [On-Device Setup & Controls Guide](#on-device-setup--controls-guide)
 - [Building From Source](#building-from-source)
+- [Project History & Engineering Notes](PROJECT_NOTES.md)
 - [Contributors & Credits](#contributors--credits)
 - [License & Legal Notices](#license--legal-notices)
 
@@ -45,18 +46,17 @@ Earlier community experiments packaged _Eastward_ inside generic multi-title or 
 
 ## How It Works vs Emulator vs NSXRecomp vs DroidPlay
 
-Understanding where **Eastward Custom** sits in the Android/Switch native ecosystem:
+Understanding where **Eastward Custom (v3)** sits in the Android/Switch native ecosystem:
 
 | Approach / Project | Execution Model | Graphics Pipeline | Used in Eastward Custom? |
 | :--- | :--- | :--- | :--- |
 | **Traditional Emulators** (Yuzu, Ryujinx, etc.) | Dynamic JIT / NCE virtualization of full Switch console OS & hardware | Runtime shader decompilation + heavy GPU emulation | **No** |
 | **NSXRecomp / nxrecomp** | **Static Recompilation**: lifts Switch AArch64 machine code into C++ source files, then recompiles via Clang/NDK | Custom graphics translation / host backend | **No** |
-| **DroidPlay (`droidnative` / `nx2android`)** | Community compatibility wrapper inspired by `nxnative` to boot multiple Switch titles on Android | `nxnative`-style HLE services & Vulkan backend | **No** (separate codebase) |
-| **Eastward Custom (This Repo — `dm` runtime)** | **Direct ARM64 Binary Runtime (`dm` / `nxnative`-derived)**: patches NSO executables cleanly on-device (`patch_nso.py` / `loader.c`) and executes ARM64 code directly with C HLE Horizon OS services (`dm/host/hle_*.c`) | Direct **NVN-to-Vulkan** renderer (`gfx_vk.c`, `gfx_vk_*.inc`) + offline/on-device Python **SPIR-V translation** (`spv_android.py`) | **Yes — 100% self-contained** |
+| **DroidPlay Core (`dpc` / `dm` — `droidplay-core-0.8.10`)** | **Direct ARM64 Binary Runtime (`dm`)**: patches NSO executables cleanly on-device (`patch_nso.py` / `loader.c`) and executes ARM64 instructions directly over C Horizon OS HLE services (`dm/host/hle_*.c`) | Direct **NVN-to-Vulkan** renderer (`gfx_vk.c`, `gfx_vk_*.inc`) + Python/native **SPIR-V translation** (`spv_build.py` / `spv_android.py` / `libdmsh_xlate.so`) | **Yes — Core engine underneath v3!** |
 
-### Why doesn't Eastward Custom need NSXRecomp or DroidPlay?
-1. **Android devices are already ARM64 (`arm64-v8a`):** Like `nxnative`, `dm` executes the game's native AArch64 instructions directly in user space after ELF/NSO relocation and ABI fixups — avoiding emulator CPU translation overhead **and** avoiding generating massive lifted C++ source trees (as in `NSXRecomp`).
-2. **Tailored Title HLE & Pre-Mapped Shader Pipeline:** `dm/games/010071B00F63A000/` provides Eastward-specific PSO manifests, descriptor facts, and `dmsh_chain.h` (`EXPECTED_CHAIN = 1a0d0a59a263`) without including copyrighted shader dumps, letting the phone translate user-dumped shaders directly into Vulkan SPIR-V during setup.
+### How v3 combines DroidPlay Core (`dm`) with a Custom Eastward Shell
+1. **Why DroidPlay Core (`dm`) instead of NSXRecomp?** Android phones are already `arm64-v8a`. `DroidPlay Core` (`dm`) runs Eastward's native AArch64 instructions directly in user space after ELF/NSO relocation and ABI fixups — avoiding emulator CPU virtualization **and** avoiding generating massive lifted C++ codebases like `NSXRecomp`.
+2. **Why build a clean v3 shell instead of the older v2 fork?** Earlier v2 tests reused a Pokémon-derived community shell (`Galar-Native`), causing extra overhead, controller flicker, and unrelated game hacks. **Eastward Custom (v3)** keeps the fast **DroidPlay (`dm`) runtime & Vulkan backend** while replacing the Android UI, SVG controls, and on-device `.nsp` + `prod.keys` setup cleanly for Title ID `010071B00F63A000` (`dm/games/010071B00F63A000/`, `EXPECTED_CHAIN = 1a0d0a59a263`).
 
 ---
 
