@@ -1,7 +1,13 @@
 Eastward Custom (Android)
-Copyright (c) 2026 Itsneslab (Eastward-Custom-Android contributors)
+Copyright (c) 2026 Itsneslab (Project Maintainer & Eastward Custom v3 Lead)
 Copyright (c) 2026 jhaizhou (d2r-mobile, nxnative)
 Copyright (c) 2026 the Galar Native (formerly PKShield Android) contributors
+
+Contributors & Acknowledgements:
+- Itsneslab — Project direction, Android UI/UX design specs, hardware testing, and repository maintenance
+- Google Antigravity (AI Engineering Co-pilot) — v3 dark-glass launcher & menu UI, SVG RPG touch overlay & idle dimming, 16 KB ELF alignment, cross-GPU hardening, and documentation
+- jhaizhou — Upstream d2r-mobile / nxnative direct ARM64 runtime & Horizon OS HLE architecture
+- Galar Native contributors — Early Android runtime & Vulkan driver plumbing references
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
