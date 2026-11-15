@@ -1,6 +1,7 @@
 package com.eastward.custom;
 
 import android.app.NativeActivity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 
@@ -22,6 +23,12 @@ public class GameActivity extends NativeActivity {
     public void onWindowFocusChanged(boolean has) {
         super.onWindowFocusChanged(has);
         if (has) immersive();
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        GameMenu.onActivityResult(this, req, res, data);
     }
 
     @Override

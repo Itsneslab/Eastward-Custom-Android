@@ -62,15 +62,21 @@ import java.util.zip.ZipInputStream;
  */
 public final class SetupActivity extends Activity {
     private static final int REQ_PERM = 100, REQ_GAME = 101, REQ_KEYS = 102, REQ_DRIVER = 103,
-            REQ_SAVE_EXPORT = 104, REQ_SAVE_IMPORT = 105;
+            REQ_SAVE_EXPORT = 104, REQ_SAVE_IMPORT = 105,
+            REQ_UPDATE = 106, REQ_DLC = 107, REQ_LOG_EXPORT = 108;
 
     private static volatile boolean setupRunning;
-    private static final List<String> selectedPaths = new ArrayList<>();
-    private static final List<Uri> selectedUris = new ArrayList<>();
+    private static String basePath;
+    private static Uri baseUri;
+    private static String updatePath;
+    private static Uri updateUri;
+    private static final List<String> dlcPaths = new ArrayList<>();
+    private static final List<Uri> dlcUris = new ArrayList<>();
     private static boolean allowDamagedOffer;
 
     private static final int C_BG        = 0xFF0D0F13;
     private static final int C_CARD      = 0xFF1C1F26;
+    private static final int C_PANEL     = 0xFF151820;
     private static final int C_CARD_LINE = 0xFF2A2E37;
     private static final int C_CHIP      = 0xFF262A33;
     private static final int C_TEXT      = 0xFFF2F3F5;
@@ -81,7 +87,8 @@ public final class SetupActivity extends Activity {
     private static final int C_WARN      = 0xFFFFB74D;
     private static final String GITHUB_URL = "https://github.com/Itsneslab/Eastward-Custom-Android";
 
-    private TextView statusTv, gameFilesTv, keysTv, driverTv, readyBadgeTv;
+    private TextView statusTv, baseFileTv, updateFileTv, dlcFilesTv, keysTv, driverTv, readyBadgeTv;
+    private TextView btnClearUpdate, btnClearDlc;
     private ProgressBar progressBar;
     private TextView btnSetup, btnPlay, btnSetupAnyway;
     private ImageView iconView;
@@ -97,23 +104,23 @@ public final class SetupActivity extends Activity {
             return;
         }
 
-        boolean showSetup = getIntent().getBooleanExtra("setup", false);
         registerDynamicShortcut();
-
-        if (GameSettings.isReady(this) && !showSetup && !setupRunning) {
-            startGame();
-            return;
-        }
 
         buildUi();
         requestStoragePermissionIfNeeded();
-        if (!GameSettings.isReady(this) && selectedPaths.isEmpty() && selectedUris.isEmpty()) {
+        if (!GameSettings.isReady(this) && basePath == null && baseUri == null) {
             File[] cached = new File(GameSettings.gameDir(this), "setup_work/import").listFiles();
             if (cached != null) {
+                Arrays.sort(cached, (a, c) -> Long.compare(c.length(), a.length()));
                 for (File f : cached) {
                     String n = f.getName().toLowerCase(Locale.ROOT);
-                    if (f.isFile() && f.length() > 0 && (n.endsWith(".nsp") || n.endsWith(".xci"))) {
-                        selectedPaths.add(f.getPath());
+                    if (!f.isFile() || f.length() <= 0 || !(n.endsWith(".nsp") || n.endsWith(".xci"))) continue;
+                    if (n.startsWith("update_") && updatePath == null && updateUri == null) {
+                        updatePath = f.getPath();
+                    } else if (n.startsWith("dlc_")) {
+                        dlcPaths.add(f.getPath());
+                    } else if (basePath == null) {
+                        basePath = f.getPath();
                     }
                 }
             }
@@ -220,8 +227,102 @@ public final class SetupActivity extends Activity {
 
         header.addView(hTxt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        btnPlay = actionBtn("Play Eastward", C_ACCENT, C_INK, dp, true);
-        btnPlay.setPadding((int) (20 * dp), (int) (12 * dp), (int) (20 * dp), (int) (12 * dp));
+        // Compact vertical utility stack: Export Log (.zip) directly above ID | ENG
+        LinearLayout rightHdr = new LinearLayout(this);
+        rightHdr.setOrientation(LinearLayout.VERTICAL);
+        rightHdr.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        TextView btnExportLog = new TextView(this);
+        btnExportLog.setText(UiText.tr(this, "Export Log", "Ekspor Log"));
+        btnExportLog.setTextColor(C_ACCENT);
+        btnExportLog.setTextSize(11);
+        btnExportLog.setSingleLine(true);
+        btnExportLog.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        btnExportLog.setGravity(Gravity.CENTER);
+        btnExportLog.setPadding((int) (14 * dp), (int) (6 * dp), (int) (14 * dp), (int) (6 * dp));
+        GradientDrawable exBg = new GradientDrawable();
+        exBg.setColor(C_CHIP);
+        exBg.setCornerRadius(10 * dp);
+        exBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+        btnExportLog.setBackground(exBg);
+        btnExportLog.setOnClickListener(v -> exportLogs());
+        LinearLayout.LayoutParams exLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        exLp.bottomMargin = (int) (5 * dp);
+        rightHdr.addView(btnExportLog, exLp);
+
+        LinearLayout langBox = new LinearLayout(this);
+        langBox.setOrientation(LinearLayout.HORIZONTAL);
+        android.graphics.drawable.GradientDrawable langBg = new android.graphics.drawable.GradientDrawable();
+        langBg.setColor(C_PANEL);
+        langBg.setCornerRadius(10 * dp);
+        langBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+        langBox.setBackground(langBg);
+        int lpad = (int) (3 * dp);
+        langBox.setPadding(lpad, lpad, lpad, lpad);
+        boolean isId = UiText.isId(this);
+        TextView btnId = new TextView(this);
+        btnId.setText("ID");
+        btnId.setTextSize(11);
+        btnId.setSingleLine(true);
+        btnId.setGravity(Gravity.CENTER);
+        btnId.setMinWidth((int) (42 * dp));
+        btnId.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        btnId.setPadding((int) (12 * dp), (int) (6 * dp), (int) (12 * dp), (int) (6 * dp));
+        if (isId) {
+            android.graphics.drawable.GradientDrawable act = new android.graphics.drawable.GradientDrawable();
+            act.setColor(C_ACCENT);
+            act.setCornerRadius(8 * dp);
+            btnId.setBackground(act);
+            btnId.setTextColor(C_INK);
+        } else {
+            btnId.setTextColor(C_SUB);
+        }
+        btnId.setOnClickListener(v -> {
+            if (!UiText.isId(this)) {
+                UiText.setLang(this, "id");
+                buildUi();
+                refreshUi();
+            }
+        });
+        TextView btnEng = new TextView(this);
+        btnEng.setText("ENG");
+        btnEng.setTextSize(11);
+        btnEng.setSingleLine(true);
+        btnEng.setGravity(Gravity.CENTER);
+        btnEng.setMinWidth((int) (46 * dp));
+        btnEng.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        btnEng.setPadding((int) (12 * dp), (int) (6 * dp), (int) (12 * dp), (int) (6 * dp));
+        if (!isId) {
+            android.graphics.drawable.GradientDrawable act = new android.graphics.drawable.GradientDrawable();
+            act.setColor(C_ACCENT);
+            act.setCornerRadius(8 * dp);
+            btnEng.setBackground(act);
+            btnEng.setTextColor(C_INK);
+        } else {
+            btnEng.setTextColor(C_SUB);
+        }
+        btnEng.setOnClickListener(v -> {
+            if (UiText.isId(this)) {
+                UiText.setLang(this, "en");
+                buildUi();
+                refreshUi();
+            }
+        });
+        langBox.addView(btnId, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        langBox.addView(btnEng, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        rightHdr.addView(langBox, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout.LayoutParams hdrStackLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hdrStackLp.rightMargin = (int) (10 * dp);
+        header.addView(rightHdr, hdrStackLp);
+
+        btnPlay = actionBtn(UiText.tr(this, "Play Eastward", "Mainkan Eastward"), C_ACCENT, C_INK, dp, true);
+        btnPlay.setPadding((int) (20 * dp), (int) (14 * dp), (int) (20 * dp), (int) (14 * dp));
         btnPlay.setOnClickListener(v -> startGame());
         header.addView(btnPlay);
         root.addView(header, cardLp(dp));
@@ -234,19 +335,54 @@ public final class SetupActivity extends Activity {
         LinearLayout rightCol = new LinearLayout(this);
         rightCol.setOrientation(LinearLayout.VERTICAL);
 
-        // Left Card 1: Game Files & Keys Setup
+        // Left Card 1: Game Files, Update, DLC & Keys Setup
         LinearLayout setupCard = card(dp);
-        cardTitle(setupCard, "GAME SETUP (.NSP / .XCI + PROD.KEYS)", dp);
+        cardTitle(setupCard, UiText.tr(this, "GAME FILES, UPDATE, DLC & KEYS", "FILE GAME, UPDATE, DLC & KEYS"), dp);
 
-        gameFilesTv = infoLine(setupCard, "Game files: none chosen", dp);
-        TextView btnPickGame = actionBtn("Choose .nsp / .xci Files", C_CHIP, C_TEXT, dp, false);
-        btnPickGame.setOnClickListener(v -> pickGameFiles());
-        setupCard.addView(btnPickGame, btnLp(dp));
+        LinearLayout filesPanel = panel(dp);
+        baseFileTv = new TextView(this);
+        addFileSlotRow(filesPanel,
+                UiText.tr(this, "Base Game (.nsp / .xci)", "Base Game (.nsp / .xci)"),
+                baseFileTv,
+                UiText.tr(this, "Choose", "Pilih"),
+                v -> pickBaseGame(), null, dp);
+        filesPanel.addView(divider(dp));
 
-        keysTv = infoLine(setupCard, "Keys: checking...", dp);
-        TextView btnPickKeys = actionBtn("Choose prod.keys (or title.keys)", C_CHIP, C_TEXT, dp, false);
-        btnPickKeys.setOnClickListener(v -> pickKeys());
-        setupCard.addView(btnPickKeys, btnLp(dp));
+        updateFileTv = new TextView(this);
+        btnClearUpdate = addFileSlotRow(filesPanel,
+                UiText.tr(this, "Update (.nsp, Optional)", "Update (.nsp, Opsional)"),
+                updateFileTv,
+                UiText.tr(this, "Upload", "Pilih"),
+                v -> pickUpdateFile(),
+                v -> {
+                    updatePath = null;
+                    updateUri = null;
+                    allowDamagedOffer = false;
+                    refreshUi();
+                }, dp);
+        filesPanel.addView(divider(dp));
+
+        dlcFilesTv = new TextView(this);
+        btnClearDlc = addFileSlotRow(filesPanel,
+                UiText.tr(this, "DLC (.nsp, Optional)", "DLC (.nsp, Opsional)"),
+                dlcFilesTv,
+                UiText.tr(this, "Upload", "Pilih"),
+                v -> pickDlcFiles(),
+                v -> {
+                    dlcPaths.clear();
+                    dlcUris.clear();
+                    allowDamagedOffer = false;
+                    refreshUi();
+                }, dp);
+        filesPanel.addView(divider(dp));
+
+        keysTv = new TextView(this);
+        addFileSlotRow(filesPanel,
+                UiText.tr(this, "Switch Keys (prod.keys)", "Switch Keys (prod.keys)"),
+                keysTv,
+                UiText.tr(this, "Choose", "Pilih"),
+                v -> pickKeys(), null, dp);
+        setupCard.addView(filesPanel, btnLp(dp));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(400);
@@ -268,16 +404,16 @@ public final class SetupActivity extends Activity {
         progressBar.setProgressDrawable(pbLayer);
         setupCard.addView(progressBar, btnLp(dp));
 
-        statusTv = infoLine(setupCard, "Pick your Eastward dump + prod.keys and tap Set up.", dp);
+        statusTv = infoLine(setupCard, UiText.tr(this, "Pick your Eastward dump + prod.keys and tap Set up.", "Pilih file Eastward + prod.keys lalu tekan Mulai Setup."), dp);
         statusTv.setTextColor(C_SUB);
 
         LinearLayout runRow = new LinearLayout(this);
         runRow.setOrientation(LinearLayout.HORIZONTAL);
-        btnSetup = actionBtn("Set up Eastward", C_ACCENT, C_INK, dp, true);
+        btnSetup = actionBtn(UiText.tr(this, "Set up Eastward", "Setup Eastward"), C_ACCENT, C_INK, dp, true);
         btnSetup.setOnClickListener(v -> startSetup(false));
         runRow.addView(btnSetup, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        btnSetupAnyway = actionBtn("Set up anyway", C_WARN, C_INK, dp, true);
+        btnSetupAnyway = actionBtn(UiText.tr(this, "Set up anyway", "Tetap Setup"), C_WARN, C_INK, dp, true);
         btnSetupAnyway.setVisibility(View.GONE);
         btnSetupAnyway.setOnClickListener(v -> startSetup(true));
         LinearLayout.LayoutParams anywayLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -289,17 +425,17 @@ public final class SetupActivity extends Activity {
 
         // Left Card 2: Save Data
         LinearLayout saveCard = card(dp);
-        cardTitle(saveCard, "SAVE DATA BACKUP", dp);
+        cardTitle(saveCard, UiText.tr(this, "SAVE DATA BACKUP", "CADANGAN SAVE DATA"), dp);
         LinearLayout saveRow = new LinearLayout(this);
         saveRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView btnExport = actionBtn("Export Save (.zip)", C_CHIP, C_TEXT, dp, false);
+        TextView btnExport = actionBtn(UiText.tr(this, "Export Save (.zip)", "Ekspor Save (.zip)"), C_CHIP, C_TEXT, dp, false);
         btnExport.setOnClickListener(v -> exportSave());
         LinearLayout.LayoutParams s1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         s1.rightMargin = (int) (8 * dp);
         saveRow.addView(btnExport, s1);
 
-        TextView btnImport = actionBtn("Import Save (.zip)", C_CHIP, C_TEXT, dp, false);
+        TextView btnImport = actionBtn(UiText.tr(this, "Import Save (.zip)", "Impor Save (.zip)"), C_CHIP, C_TEXT, dp, false);
         btnImport.setOnClickListener(v -> importSave());
         LinearLayout.LayoutParams s2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         saveRow.addView(btnImport, s2);
@@ -308,22 +444,22 @@ public final class SetupActivity extends Activity {
 
         // Right Card 1: Vulkan Driver (Turnip / PanVK)
         LinearLayout drvCard = card(dp);
-        cardTitle(drvCard, "VULKAN GPU DRIVER (ADRENO TURNIP / MALI SYSTEM)", dp);
+        cardTitle(drvCard, UiText.tr(this, "VULKAN GPU DRIVER (ADRENO TURNIP / MALI SYSTEM)", "DRIVER GPU VULKAN (ADRENO TURNIP / MALI)"), dp);
         driverTv = infoLine(drvCard, "", dp);
         LinearLayout drvRow = new LinearLayout(this);
         drvRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView btnPickDrv = actionBtn("Install Driver (.zip)", C_CHIP, C_TEXT, dp, false);
+        TextView btnPickDrv = actionBtn(UiText.tr(this, "Install Driver (.zip)", "Pasang Driver (.zip)"), C_CHIP, C_TEXT, dp, false);
         btnPickDrv.setOnClickListener(v -> pickDriver());
         LinearLayout.LayoutParams d1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         d1.rightMargin = (int) (8 * dp);
         drvRow.addView(btnPickDrv, d1);
 
-        TextView btnResetDrv = actionBtn("Use Phone Driver", C_CHIP, C_SUB, dp, false);
+        TextView btnResetDrv = actionBtn(UiText.tr(this, "Use Phone Driver", "Pakai Driver Bawaan"), C_CHIP, C_SUB, dp, false);
         btnResetDrv.setOnClickListener(v -> {
             DriverPackages.clearDriver(this);
             refreshUi();
-            toast("Switched back to system Vulkan driver.");
+            toast(UiText.tr(this, "Switched back to system Vulkan driver.", "Kembali memakai driver Vulkan bawaan HP."));
         });
         LinearLayout.LayoutParams d2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         drvRow.addView(btnResetDrv, d2);
@@ -332,19 +468,99 @@ public final class SetupActivity extends Activity {
 
         // Right Card 2: Quick Settings
         LinearLayout cfgCard = card(dp);
-        cardTitle(cfgCard, "EASTWARD ENGINE SETTINGS", dp);
-        addChoiceRow(cfgCard, "Resolution", "DM_OPMODE", "0",
-                new String[]{"720p Handheld", "1080p Docked"}, new String[]{"0", "1"}, dp);
-        addChoiceRow(cfgCard, "Frame Target", "DM_FPS_TARGET", "",
-                new String[]{"Auto", "30 FPS", "60 FPS"}, new String[]{"", "30", "60"}, dp);
-        addChoiceRow(cfgCard, "Language", "DM_LANG", "en-US",
-                new String[]{"English", "Japanese", "Chinese"}, new String[]{"en-US", "ja", "zh-Hans"}, dp);
-        addToggleRow(cfgCard, "Mali FP16 Optimize", "DM_VK_MALI_FP16", true, dp);
-        addToggleRow(cfgCard, "TBDR Clear LoadOp", "DM_VK_CLEAR_LOADOP", true, dp);
-        addToggleRow(cfgCard, "Descriptor Reuse", "DM_VK_SET_REUSE", true, dp);
-        addToggleRow(cfgCard, "Show FPS Counter", "DM_SHOW_FPS", false, dp);
+        cardTitle(cfgCard, UiText.tr(this, "ENGINE & CHIPSET SETTINGS",
+                "PENGATURAN ENGINE & CHIPSET"), dp);
 
-        TextView btnResetEnv = actionBtn("Reset Engine Defaults", C_CHIP, C_SUB, dp, false);
+        // Universal Auto-Tune + preset bar across Snapdragon / MediaTek / Exynos
+        TextView btnAutoTune = actionBtn(UiText.tr(this, "Auto-Tune This Device",
+                "Sesuaikan Otomatis HP Ini"), C_ACCENT, C_INK, dp, true);
+        btnAutoTune.setOnClickListener(v -> {
+            String summary = GameSettings.autoTuneDevice(this);
+            toast(UiText.tr(this, "Auto-tuned: ", "Disesuaikan otomatis: ") + summary);
+            buildUi();
+            refreshUi();
+        });
+        cfgCard.addView(btnAutoTune, btnLp(dp));
+
+        LinearLayout profRow = new LinearLayout(this);
+        profRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] profKeys = {"performance", "balanced", "quality"};
+        String[] profLabels = {
+            UiText.tr(this, "Performance", "Performa"),
+            UiText.tr(this, "Balanced", "Seimbang"),
+            UiText.tr(this, "Quality 1080p", "Kualitas 1080p")
+        };
+        for (int i = 0; i < profKeys.length; i++) {
+            final String pk = profKeys[i];
+            TextView pb = actionBtn(profLabels[i], C_CHIP, C_TEXT, dp, false);
+            pb.setTextSize(12);
+            pb.setOnClickListener(v -> {
+                GameSettings.applyProfile(this, pk);
+                toast(UiText.tr(this, "Profile applied: ", "Profil diterapkan: ") + pb.getText());
+                buildUi();
+                refreshUi();
+            });
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) plp.leftMargin = (int) (6 * dp);
+            profRow.addView(pb, plp);
+        }
+        cfgCard.addView(profRow, btnLp(dp));
+
+        addChoiceRow(cfgCard, UiText.tr(this, "Resolution", "Resolusi"), "DM_OPMODE", "0",
+                new String[]{UiText.tr(this, "720p Handheld", "720p Ringan"),
+                        UiText.tr(this, "1080p Docked", "1080p Tajam")},
+                new String[]{"0", "1"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "",
+                new String[]{UiText.tr(this, "60 Hz Sync", "60 Hz Normal"),
+                        UiText.tr(this, "Uncapped", "Tanpa Batas")},
+                new String[]{"", "0"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Game Language", "Bahasa Game"), "DM_LANG", "en-US",
+                new String[]{"English", "Japanese", "Chinese"}, new String[]{"en-US", "ja", "zh-Hans"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "CPU Core Topology", "Topologi Core CPU"), "DM_VK_PIN", "",
+                new String[]{UiText.tr(this, "Auto", "Otomatis"), "2+6 (c0)", "4+4 (f0)", "1+3+4 (80)"},
+                new String[]{"", "c0", "f0", "80"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "CPU Boost (UClamp)", "Boost CPU (UClamp)"), "DM_VK_UCLAMP_MIN", "0",
+                new String[]{UiText.tr(this, "Off", "Mati"), "512", "800", "1024"},
+                new String[]{"0", "512", "800", "1024"}, dp);
+
+        TextView vkSec = infoLine(cfgCard, UiText.tr(this, "Vulkan & Graphics Toggles", "Pengaturan Toggle Vulkan & Grafis"), dp);
+        vkSec.setTextColor(C_TEXT);
+        vkSec.setTypeface(Typeface.DEFAULT_BOLD);
+        vkSec.setPadding(0, (int) (10 * dp), 0, (int) (2 * dp));
+
+        LinearLayout togPanel = panel(dp);
+        addToggleRow(togPanel,
+                UiText.tr(this, "Mali FP16 Optimize", "Optimasi Mali FP16"),
+                UiText.tr(this, "Faster 16-bit shader math on Mali GPUs", "Percepat hitung shader 16-bit di GPU Mali"),
+                "DM_VK_MALI_FP16", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "TBDR Clear LoadOp", "Tile Clear Cepat (TBDR)"),
+                UiText.tr(this, "Skip full-frame clear stores on mobile tile GPUs", "Hemat bandwidth tile GPU HP saat clear layar"),
+                "DM_VK_CLEAR_LOADOP", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Descriptor Reuse", "Gunakan Ulang Descriptor"),
+                UiText.tr(this, "Cut CPU draw-call overhead each frame", "Kurangi beban CPU tiap frame render"),
+                "DM_VK_SET_REUSE", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Async Shader Compile", "Kompilasi Shader Latar"),
+                UiText.tr(this, "Avoid micro-stutters when new shaders appear", "Kurangi patah-patah saat shader baru dimuat"),
+                "DM_VK_ASYNC_PIPE", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Display Timing Sync", "Sinkronisasi Timing Layar"),
+                UiText.tr(this, "Smooth frame pacing on Google/Mali/Snapdragon", "Haluskan frame pacing di layar HP"),
+                "DM_VK_PRESENT_TIMING", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Show FPS Counter", "Tampilkan Counter FPS"),
+                UiText.tr(this, "Display live FPS overlay during gameplay", "Tampilkan angka FPS saat bermain"),
+                "DM_SHOW_FPS", false, dp);
+        cfgCard.addView(togPanel, btnLp(dp));
+
+        TextView btnResetEnv = actionBtn(UiText.tr(this, "Reset Engine Defaults", "Reset ke Pengaturan Awal"), C_CHIP, C_SUB, dp, false);
         btnResetEnv.setOnClickListener(v -> {
             GameSettings.resetDefaults(this);
             recreate();
@@ -364,6 +580,7 @@ public final class SetupActivity extends Activity {
 
     private void refreshUi() {
         boolean ready = GameSettings.isReady(this);
+        boolean hasAoc = new File(GameSettings.gameDir(this), "aoc").isDirectory();
         File ico = new File(GameSettings.gameDir(this), "icon.jpg");
         if (ico.isFile()) {
             Bitmap b = BitmapFactory.decodeFile(ico.getPath());
@@ -373,42 +590,87 @@ public final class SetupActivity extends Activity {
                 setTaskDescription(new ActivityManager.TaskDescription("Eastward Custom", b));
             }
         }
-        readyBadgeTv.setText(ready ? "Ready to play (010071B00F63A000)" : "Not set up yet — choose files below");
+        readyBadgeTv.setText(ready
+                ? (hasAoc
+                        ? UiText.tr(this, "Ready to play \u2022 DLC active (010071B00F63A000)", "Siap dimainkan \u2022 DLC aktif (010071B00F63A000)")
+                        : UiText.tr(this, "Ready to play (010071B00F63A000)", "Siap dimainkan (010071B00F63A000)"))
+                : UiText.tr(this, "Not set up yet \u2014 choose files below", "Belum di-setup \u2014 pilih file di bawah"));
         readyBadgeTv.setTextColor(ready ? Color.rgb(125, 235, 145) : Color.rgb(255, 200, 110));
         btnPlay.setEnabled(ready && !setupRunning);
         btnPlay.setAlpha(ready && !setupRunning ? 1f : 0.45f);
 
         File pk = new File(GameSettings.keysDir(this), "prod.keys");
         boolean hasKeys = pk.isFile() && pk.length() > 0;
-        keysTv.setText(hasKeys ? "Keys: prod.keys ready" : "Keys: prod.keys missing");
-        keysTv.setTextColor(hasKeys ? Color.rgb(140, 225, 160) : Color.rgb(255, 180, 130));
+        keysTv.setText(hasKeys
+                ? UiText.tr(this, "prod.keys ready", "prod.keys siap")
+                : UiText.tr(this, "prod.keys missing", "prod.keys belum ada"));
+        keysTv.setTextColor(hasKeys ? C_OK : C_WARN);
 
-        int count = selectedPaths.size() + selectedUris.size();
-        if (count == 0) {
-            if (hasExtractedCodeAndRomfs()) {
-                gameFilesTv.setText("Game files: extracted & code patched (ready for shaders)");
-            } else {
-                gameFilesTv.setText("Game files: none chosen");
-            }
+        if (basePath != null || baseUri != null) {
+            baseFileTv.setText(basePath != null ? new File(basePath).getName() : queryName(baseUri));
+            baseFileTv.setTextColor(C_OK);
+        } else if (hasExtractedCodeAndRomfs()) {
+            baseFileTv.setText(UiText.tr(this,
+                    "Extracted & patched (ready for shaders)",
+                    "Sudah diekstrak & patch (siap shader)"));
+            baseFileTv.setTextColor(C_OK);
         } else {
-            StringBuilder sb = new StringBuilder("Game files (" + count + "): ");
-            for (String p : selectedPaths) sb.append(new File(p).getName()).append(" ");
-            for (Uri u : selectedUris) sb.append(queryName(u)).append(" ");
-            gameFilesTv.setText(sb.toString().trim());
+            baseFileTv.setText(UiText.tr(this, "Not chosen yet", "Belum dipilih"));
+            baseFileTv.setTextColor(C_SUB);
         }
 
-        driverTv.setText("Active: " + GameSettings.driverLabel(this));
+        boolean hasUpdate = updatePath != null || updateUri != null;
+        if (hasUpdate) {
+            updateFileTv.setText(updatePath != null ? new File(updatePath).getName() : queryName(updateUri));
+            updateFileTv.setTextColor(C_OK);
+        } else {
+            updateFileTv.setText(UiText.tr(this, "None selected (optional)", "Belum ada (opsional)"));
+            updateFileTv.setTextColor(C_SUB);
+        }
+        if (btnClearUpdate != null) btnClearUpdate.setVisibility(hasUpdate && !setupRunning ? View.VISIBLE : View.GONE);
+
+        int dlcCount = dlcPaths.size() + dlcUris.size();
+        if (dlcCount > 0) {
+            StringBuilder dsb = new StringBuilder();
+            for (String p : dlcPaths) dsb.append(new File(p).getName()).append(" ");
+            for (Uri u : dlcUris) dsb.append(queryName(u)).append(" ");
+            dlcFilesTv.setText(dlcCount + "x: " + dsb.toString().trim());
+            dlcFilesTv.setTextColor(C_OK);
+        } else if (hasAoc) {
+            dlcFilesTv.setText(UiText.tr(this, "Active DLC installed (aoc/)", "DLC aktif terpasang (aoc/)"));
+            dlcFilesTv.setTextColor(C_OK);
+        } else {
+            dlcFilesTv.setText(UiText.tr(this, "None selected (optional)", "Belum ada (opsional)"));
+            dlcFilesTv.setTextColor(C_SUB);
+        }
+        if (btnClearDlc != null) btnClearDlc.setVisibility(dlcCount > 0 && !setupRunning ? View.VISIBLE : View.GONE);
+
+        driverTv.setText(UiText.tr(this, "Active: ", "Aktif: ") + GameSettings.driverLabel(this));
         btnSetup.setEnabled(!setupRunning);
         btnSetupAnyway.setVisibility(allowDamagedOffer && !setupRunning ? View.VISIBLE : View.GONE);
     }
 
     // ---- File Picking ----
-    private void pickGameFiles() {
+    private void pickBaseGame() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        startActivityForResult(i, REQ_GAME);
+    }
+
+    private void pickUpdateFile() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        startActivityForResult(i, REQ_UPDATE);
+    }
+
+    private void pickDlcFiles() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                 .addCategory(Intent.CATEGORY_OPENABLE)
                 .setType("*/*")
                 .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        startActivityForResult(i, REQ_GAME);
+        startActivityForResult(i, REQ_DLC);
     }
 
     private void pickKeys() {
@@ -424,6 +686,14 @@ public final class SetupActivity extends Activity {
                 .addCategory(Intent.CATEGORY_OPENABLE)
                 .setType("*/*");
         startActivityForResult(i, REQ_DRIVER);
+    }
+
+    private void exportLogs() {
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/zip")
+                .putExtra(Intent.EXTRA_TITLE, LogExporter.suggestedFileName());
+        startActivityForResult(i, REQ_LOG_EXPORT);
     }
 
     private void exportSave() {
@@ -456,8 +726,6 @@ public final class SetupActivity extends Activity {
         if (uris.isEmpty()) return;
 
         if (req == REQ_GAME) {
-            selectedPaths.clear();
-            selectedUris.clear();
             for (Uri u : uris) {
                 String name = queryName(u);
                 if (name.toLowerCase(Locale.ROOT).endsWith(".keys")) {
@@ -465,8 +733,35 @@ public final class SetupActivity extends Activity {
                     continue;
                 }
                 String direct = resolveDirectPath(u);
-                if (direct != null && new File(direct).canRead()) selectedPaths.add(direct);
-                else selectedUris.add(u);
+                if (direct != null && new File(direct).canRead()) {
+                    basePath = direct;
+                    baseUri = null;
+                } else {
+                    baseUri = u;
+                    basePath = null;
+                }
+            }
+            allowDamagedOffer = false;
+            refreshUi();
+        } else if (req == REQ_UPDATE) {
+            Uri u = uris.get(0);
+            String direct = resolveDirectPath(u);
+            if (direct != null && new File(direct).canRead()) {
+                updatePath = direct;
+                updateUri = null;
+            } else {
+                updateUri = u;
+                updatePath = null;
+            }
+            allowDamagedOffer = false;
+            refreshUi();
+        } else if (req == REQ_DLC) {
+            dlcPaths.clear();
+            dlcUris.clear();
+            for (Uri u : uris) {
+                String direct = resolveDirectPath(u);
+                if (direct != null && new File(direct).canRead()) dlcPaths.add(direct);
+                else dlcUris.add(u);
             }
             allowDamagedOffer = false;
             refreshUi();
@@ -475,29 +770,41 @@ public final class SetupActivity extends Activity {
             for (Uri u : uris) {
                 if (importKeyUri(u, queryName(u))) ok++;
             }
-            if (ok > 0) toast("Keys imported.");
+            if (ok > 0) toast(UiText.tr(this, "Keys imported.", "Keys berhasil diimpor."));
             refreshUi();
         } else if (req == REQ_DRIVER) {
             try {
                 String installed = DriverPackages.installZip(this, uris.get(0));
-                toast("Installed driver: " + installed);
+                toast(UiText.tr(this, "Installed driver: ", "Driver terpasang: ") + installed);
             } catch (Exception e) {
-                showError("Driver Install Failed", e.getMessage());
+                showError(UiText.tr(this, "Driver Install Failed", "Gagal Pasang Driver"), e.getMessage());
             }
             refreshUi();
+        } else if (req == REQ_LOG_EXPORT) {
+            final Uri outUri = uris.get(0);
+            new Thread(() -> {
+                try {
+                    final LogExporter.ExportResult r = LogExporter.exportZip(this, outUri);
+                    runOnUiThread(() -> toast(UiText.tr(this,
+                            String.format(Locale.ROOT, "Exported %d log files (%d KB)", r.fileCount, Math.max(1, r.zipBytes >> 10)),
+                            String.format(Locale.ROOT, "Berhasil ekspor %d file log (%d KB)", r.fileCount, Math.max(1, r.zipBytes >> 10)))));
+                } catch (final Exception e) {
+                    runOnUiThread(() -> showError(UiText.tr(this, "Log Export Failed", "Gagal Ekspor Log"), e.getMessage()));
+                }
+            }).start();
         } else if (req == REQ_SAVE_EXPORT) {
             try {
                 int n = SaveManager.exportZip(this, uris.get(0));
-                toast("Exported " + n + " save files.");
+                toast(UiText.tr(this, "Exported " + n + " save files.", "Berhasil ekspor " + n + " file save."));
             } catch (Exception e) {
-                showError("Save Export Failed", e.getMessage());
+                showError(UiText.tr(this, "Save Export Failed", "Gagal Ekspor Save"), e.getMessage());
             }
         } else if (req == REQ_SAVE_IMPORT) {
             try {
                 int n = SaveManager.importZip(this, uris.get(0));
-                toast("Imported " + n + " save files cleanly.");
+                toast(UiText.tr(this, "Imported " + n + " save files cleanly.", "Berhasil impor " + n + " file save."));
             } catch (Exception e) {
-                showError("Save Import Failed", e.getMessage());
+                showError(UiText.tr(this, "Save Import Failed", "Gagal Impor Save"), e.getMessage());
             }
         }
     }
@@ -528,16 +835,23 @@ public final class SetupActivity extends Activity {
 
     private void startSetup(final boolean allowDamaged) {
         if (setupRunning) return;
-        final boolean resumeShadersOnly = selectedPaths.isEmpty() && selectedUris.isEmpty()
-                && hasExtractedCodeAndRomfs();
+        final boolean hasBase = basePath != null || baseUri != null;
+        final boolean hasExtra = updatePath != null || updateUri != null || !dlcPaths.isEmpty() || !dlcUris.isEmpty();
+        final boolean resumeShadersOnly = !hasBase && !hasExtra && hasExtractedCodeAndRomfs();
         if (!resumeShadersOnly) {
             File pk = new File(GameSettings.keysDir(this), "prod.keys");
             if (!pk.isFile() || pk.length() == 0) {
-                toast("Choose your prod.keys first.");
+                toast(UiText.tr(this, "Choose your prod.keys first.", "Pilih file prod.keys terlebih dahulu."));
                 return;
             }
-            if (selectedPaths.isEmpty() && selectedUris.isEmpty()) {
-                toast("Choose your Eastward .nsp / .xci file first.");
+            if (!hasBase) {
+                toast(UiText.tr(this,
+                        hasExtra
+                                ? "Also select your Base Game .nsp/.xci so Update/DLC can be merged."
+                                : "Choose your Base Game .nsp / .xci file first.",
+                        hasExtra
+                                ? "Pilih juga file Base Game .nsp/.xci agar Update/DLC bisa digabung."
+                                : "Pilih file Base Game .nsp / .xci terlebih dahulu."));
                 return;
             }
         }
@@ -547,11 +861,15 @@ public final class SetupActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         progressBar.setVisibility(View.VISIBLE);
         progressBar.setProgress(0);
-        statusTv.setText("Preparing Python & extraction tools...");
+        statusTv.setText(UiText.tr(this, "Preparing Python & extraction tools...", "Menyiapkan Python & alat ekstraksi..."));
         refreshUi();
 
-        final List<String> pathsSnap = new ArrayList<>(selectedPaths);
-        final List<Uri> urisSnap = new ArrayList<>(selectedUris);
+        final String snapBasePath = basePath;
+        final Uri snapBaseUri = baseUri;
+        final String snapUpdatePath = updatePath;
+        final Uri snapUpdateUri = updateUri;
+        final List<String> snapDlcPaths = new ArrayList<>(dlcPaths);
+        final List<Uri> snapDlcUris = new ArrayList<>(dlcUris);
 
         new Thread(() -> {
             String err = null;
@@ -571,28 +889,55 @@ public final class SetupActivity extends Activity {
                 }
                 deleteTree(new File(work, "shader_pkg"));
 
-                List<String> inputs = new ArrayList<>(pathsSnap);
-                if (!urisSnap.isEmpty()) {
-                    File impDir = new File(work, "import");
+                File impDir = new File(work, "import");
+                boolean needCopy = snapBaseUri != null || snapUpdateUri != null || !snapDlcUris.isEmpty();
+                if (needCopy) {
                     deleteTree(impDir);
                     impDir.mkdirs();
-                    for (int idx = 0; idx < urisSnap.size(); idx++) {
-                        Uri u = urisSnap.get(idx);
-                        String nm = queryName(u);
-                        final String copyName = nm.isEmpty() ? "dump_" + idx + ".nsp" : nm;
-                        File dst = new File(impDir, copyName);
-                        runOnUiThread(() -> statusTv.setText("Copying " + copyName + " into workspace..."));
-                        try (InputStream is = getContentResolver().openInputStream(u);
-                             FileOutputStream os = new FileOutputStream(dst)) {
-                            if (is == null) throw new IOException("Cannot open " + nm);
-                            copyStream(is, os);
-                        }
-                        inputs.add(dst.getPath());
-                    }
                 }
 
-                // Order largest first so base NSP precedes smaller update/DLC if needed
-                Collections.sort(inputs, (a, b) -> Long.compare(new File(b).length(), new File(a).length()));
+                String baseInput = snapBasePath;
+                if (baseInput == null && snapBaseUri != null) {
+                    String nm = queryName(snapBaseUri);
+                    final String copyName = "base_" + (nm.isEmpty() ? "game.nsp" : nm);
+                    File dst = new File(impDir, copyName);
+                    runOnUiThread(() -> statusTv.setText(UiText.tr(this, "Copying ", "Menyalin ") + nm + "..."));
+                    try (InputStream is = getContentResolver().openInputStream(snapBaseUri);
+                         FileOutputStream os = new FileOutputStream(dst)) {
+                        if (is == null) throw new IOException("Cannot open " + nm);
+                        copyStream(is, os);
+                    }
+                    baseInput = dst.getPath();
+                }
+
+                String updateInput = snapUpdatePath;
+                if (updateInput == null && snapUpdateUri != null) {
+                    String nm = queryName(snapUpdateUri);
+                    final String copyName = "update_" + (nm.isEmpty() ? "patch.nsp" : nm);
+                    File dst = new File(impDir, copyName);
+                    runOnUiThread(() -> statusTv.setText(UiText.tr(this, "Copying ", "Menyalin ") + nm + "..."));
+                    try (InputStream is = getContentResolver().openInputStream(snapUpdateUri);
+                         FileOutputStream os = new FileOutputStream(dst)) {
+                        if (is == null) throw new IOException("Cannot open " + nm);
+                        copyStream(is, os);
+                    }
+                    updateInput = dst.getPath();
+                }
+
+                List<String> dlcInputs = new ArrayList<>(snapDlcPaths);
+                for (int idx = 0; idx < snapDlcUris.size(); idx++) {
+                    Uri u = snapDlcUris.get(idx);
+                    String nm = queryName(u);
+                    final String copyName = "dlc_" + idx + "_" + (nm.isEmpty() ? "addon.nsp" : nm);
+                    File dst = new File(impDir, copyName);
+                    runOnUiThread(() -> statusTv.setText(UiText.tr(this, "Copying ", "Menyalin ") + nm + "..."));
+                    try (InputStream is = getContentResolver().openInputStream(u);
+                         FileOutputStream os = new FileOutputStream(dst)) {
+                        if (is == null) throw new IOException("Cannot open " + nm);
+                        copyStream(is, os);
+                    }
+                    dlcInputs.add(dst.getPath());
+                }
 
                 String libDir = getApplicationInfo().nativeLibraryDir;
                 List<String> cmd = new ArrayList<>();
@@ -602,9 +947,12 @@ public final class SetupActivity extends Activity {
                     cmd.add("--shaders-only");
                 } else {
                     cmd.add("--keys"); cmd.add(GameSettings.keysDir(this).getPath());
-                    cmd.add("--base"); cmd.add(inputs.get(0));
-                    for (int k = 1; k < inputs.size(); k++) {
-                        cmd.add("--dlc"); cmd.add(inputs.get(k));
+                    cmd.add("--base"); cmd.add(baseInput);
+                    if (updateInput != null) {
+                        cmd.add("--update"); cmd.add(updateInput);
+                    }
+                    for (String dlcIn : dlcInputs) {
+                        cmd.add("--dlc"); cmd.add(dlcIn);
                     }
                 }
                 cmd.add("--out"); cmd.add(gameDir.getPath());
@@ -630,9 +978,12 @@ public final class SetupActivity extends Activity {
                 env.put("J", String.valueOf(setupWorkers()));
 
                 proc = pb.start();
-                try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+                     FileWriter logW = new FileWriter(new File(work, "setup.log"), false)) {
                     String ln;
                     while ((ln = r.readLine()) != null) {
+                        logW.write(ln);
+                        logW.write('\n');
                         final String line = ln;
                         if (line.startsWith("STEP ")) {
                             String[] parts = line.split(" ", 3);
@@ -674,9 +1025,9 @@ public final class SetupActivity extends Activity {
                 setupRunning = false;
                 if (finalErr == null && GameSettings.isReady(this)) {
                     progressBar.setProgress(400);
-                    statusTv.setText("Eastward setup complete! Ready to play.");
+                    statusTv.setText(UiText.tr(this, "Eastward setup complete! Ready to play.", "Setup Eastward selesai! Siap dimainkan."));
                     refreshUi();
-                    toast("Setup complete!");
+                    toast(UiText.tr(this, "Setup complete!", "Setup selesai!"));
                 } else {
                     progressBar.setVisibility(View.GONE);
                     statusTv.setText("Setup failed: " + (finalErr != null ? finalErr : "unknown error"));
@@ -908,46 +1259,176 @@ public final class SetupActivity extends Activity {
         b.setPadding((int) (14 * dp), (int) (10 * dp), (int) (14 * dp), (int) (10 * dp));
     }
 
+    private LinearLayout panel(float dp) {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(C_PANEL);
+        d.setCornerRadius(14 * dp);
+        d.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+        l.setBackground(d);
+        return l;
+    }
+
+    private View divider(float dp) {
+        View v = new View(this);
+        v.setBackgroundColor(C_CARD_LINE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) Math.max(1, dp));
+        lp.leftMargin = (int) (12 * dp);
+        lp.rightMargin = (int) (12 * dp);
+        v.setLayoutParams(lp);
+        return v;
+    }
+
+    private TextView addFileSlotRow(LinearLayout parent, String title, TextView statusOut,
+                                    String btnLabel, View.OnClickListener onPick,
+                                    View.OnClickListener onClear, float dp) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int hpad = (int) (12 * dp), vpad = (int) (9 * dp);
+        row.setPadding(hpad, vpad, hpad, vpad);
+
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        TextView ttl = new TextView(this);
+        ttl.setText(title);
+        ttl.setTextColor(C_TEXT);
+        ttl.setTextSize(13);
+        ttl.setTypeface(Typeface.DEFAULT_BOLD);
+        left.addView(ttl);
+
+        statusOut.setTextSize(12);
+        statusOut.setTextColor(C_SUB);
+        statusOut.setSingleLine(true);
+        statusOut.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+        statusOut.setPadding(0, (int) (2 * dp), 0, 0);
+        left.addView(statusOut);
+
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        llp.rightMargin = (int) (8 * dp);
+        row.addView(left, llp);
+
+        TextView clearBtn = null;
+        if (onClear != null) {
+            clearBtn = new TextView(this);
+            clearBtn.setText("\u2715");
+            clearBtn.setTextColor(C_SUB);
+            clearBtn.setTextSize(12);
+            clearBtn.setTypeface(Typeface.DEFAULT_BOLD);
+            clearBtn.setGravity(Gravity.CENTER);
+            GradientDrawable cbg = new GradientDrawable();
+            cbg.setColor(C_CHIP);
+            cbg.setCornerRadius(10 * dp);
+            cbg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+            clearBtn.setBackground(cbg);
+            clearBtn.setPadding((int) (10 * dp), (int) (7 * dp), (int) (10 * dp), (int) (7 * dp));
+            clearBtn.setOnClickListener(onClear);
+            clearBtn.setVisibility(View.GONE);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            clp.rightMargin = (int) (6 * dp);
+            row.addView(clearBtn, clp);
+        }
+
+        TextView pickBtn = actionBtn(btnLabel, C_CHIP, C_TEXT, dp, false);
+        pickBtn.setTextSize(12);
+        pickBtn.setPadding((int) (12 * dp), (int) (7 * dp), (int) (12 * dp), (int) (7 * dp));
+        pickBtn.setOnClickListener(onPick);
+        row.addView(pickBtn);
+
+        parent.addView(row);
+        return clearBtn;
+    }
+
     private void addChoiceRow(LinearLayout parent, String label, String key, String def,
                               String[] labels, String[] vals, float dp) {
         TextView lbl = infoLine(parent, label, dp);
         lbl.setTextColor(C_TEXT);
+        lbl.setTextSize(12);
         lbl.setTypeface(Typeface.DEFAULT_BOLD);
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        lbl.setPadding(0, (int) (10 * dp), 0, (int) (4 * dp));
+
+        LinearLayout segBox = new LinearLayout(this);
+        segBox.setOrientation(LinearLayout.HORIZONTAL);
+        GradientDrawable segBg = new GradientDrawable();
+        segBg.setColor(C_PANEL);
+        segBg.setCornerRadius(13 * dp);
+        segBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+        segBox.setBackground(segBg);
+        int sp = (int) (3 * dp);
+        segBox.setPadding(sp, sp, sp, sp);
+
         String cur = GameSettings.get(this, key, def);
         final TextView[] btns = new TextView[labels.length];
         for (int i = 0; i < labels.length; i++) {
             final int idx = i;
             boolean sel = cur.equals(vals[i]);
-            TextView b = actionBtn(labels[i], sel ? C_ACCENT : C_CHIP, sel ? C_INK : C_TEXT, dp, sel);
+            TextView b = new TextView(this);
+            b.setText(labels[i]);
+            b.setTextSize(12);
+            b.setTypeface(Typeface.DEFAULT_BOLD);
+            b.setGravity(Gravity.CENTER);
+            b.setPadding((int) (8 * dp), (int) (8 * dp), (int) (8 * dp), (int) (8 * dp));
+            styleSegment(b, sel, dp);
             b.setOnClickListener(v -> {
-                GameSettings.set(this, key, vals[idx]);
+                if ("DM_VK_PIN".equals(key)) {
+                    GameSettings.setCpuPin(this, vals[idx]);
+                } else {
+                    GameSettings.set(this, key, vals[idx]);
+                }
                 for (int k = 0; k < btns.length; k++) {
-                    boolean active = (k == idx);
-                    styleBtn(btns[k], active ? C_ACCENT : C_CHIP, dp, active);
-                    btns[k].setTextColor(active ? C_INK : C_TEXT);
+                    styleSegment(btns[k], k == idx, dp);
                 }
             });
             btns[i] = b;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            if (i < labels.length - 1) lp.rightMargin = (int) (6 * dp);
-            row.addView(b, lp);
+            if (i < labels.length - 1) lp.rightMargin = (int) (3 * dp);
+            segBox.addView(b, lp);
         }
-        parent.addView(row, btnLp(dp));
+        parent.addView(segBox);
     }
 
-    private void addToggleRow(LinearLayout parent, String label, String key, boolean def, float dp) {
+    private void styleSegment(TextView b, boolean active, float dp) {
+        if (active) {
+            GradientDrawable d = new GradientDrawable();
+            d.setColor(C_ACCENT);
+            d.setCornerRadius(10 * dp);
+            b.setBackground(d);
+            b.setTextColor(C_INK);
+        } else {
+            b.setBackground(null);
+            b.setTextColor(C_SUB);
+        }
+    }
+
+    private void addToggleRow(LinearLayout parent, String label, String sub, String key, boolean def, float dp) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, (int) (8 * dp), 0, (int) (4 * dp));
+        int hpad = (int) (12 * dp), vpad = (int) (10 * dp);
+        row.setPadding(hpad, vpad, hpad, vpad);
 
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
         TextView tv = new TextView(this);
         tv.setText(label);
         tv.setTextColor(C_TEXT);
         tv.setTextSize(13);
-        row.addView(tv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        txt.addView(tv);
+        if (sub != null && !sub.isEmpty()) {
+            TextView stv = new TextView(this);
+            stv.setText(sub);
+            stv.setTextColor(C_SUB);
+            stv.setTextSize(11);
+            stv.setPadding(0, (int) (1 * dp), 0, 0);
+            txt.addView(stv);
+        }
+        LinearLayout.LayoutParams txtLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        txtLp.rightMargin = (int) (12 * dp);
+        row.addView(txt, txtLp);
 
         final boolean[] state = {"1".equals(GameSettings.get(this, key, def ? "1" : "0"))};
         int w = (int) (46 * dp), h = (int) (25 * dp), pad = (int) (3 * dp), thumbSz = h - pad * 2;
@@ -958,15 +1439,15 @@ public final class SetupActivity extends Activity {
         GradientDrawable thumbBg = new GradientDrawable();
         thumbBg.setShape(GradientDrawable.OVAL);
         thumb.setBackground(thumbBg);
-        android.widget.FrameLayout.LayoutParams tlp = new android.widget.FrameLayout.LayoutParams(thumbSz, thumbSz);
-        tlp.gravity = Gravity.CENTER_VERTICAL;
+        android.widget.FrameLayout.LayoutParams tlp = new android.widget.FrameLayout.LayoutParams(
+                thumbSz, thumbSz, Gravity.CENTER_VERTICAL | Gravity.START);
         track.addView(thumb, tlp);
 
         Runnable sync = () -> {
             GradientDrawable trBg = new GradientDrawable();
             trBg.setColor(state[0] ? C_ACCENT : 0xFF2B303B);
             trBg.setCornerRadius(h * 0.5f);
-            if (!state[0]) trBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+            trBg.setStroke((int) Math.max(1, dp), state[0] ? C_ACCENT : C_CARD_LINE);
             track.setBackground(trBg);
             thumbBg.setColor(state[0] ? C_INK : 0xFFE2E5EC);
             tlp.leftMargin = state[0] ? (w - pad - thumbSz) : pad;
@@ -974,11 +1455,13 @@ public final class SetupActivity extends Activity {
         };
         sync.run();
 
-        track.setOnClickListener(v -> {
+        View.OnClickListener toggle = v -> {
             state[0] = !state[0];
             sync.run();
             GameSettings.set(this, key, state[0] ? "1" : "0");
-        });
+        };
+        row.setOnClickListener(toggle);
+        track.setOnClickListener(toggle);
         row.addView(track);
         parent.addView(row);
     }

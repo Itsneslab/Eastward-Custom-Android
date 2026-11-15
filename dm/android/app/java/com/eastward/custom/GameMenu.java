@@ -10,6 +10,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.net.Uri;
 import android.os.Process;
 import android.view.Gravity;
 import android.view.View;
@@ -23,6 +24,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Locale;
@@ -44,6 +46,7 @@ public final class GameMenu {
     private static final int INK       = 0xFF1A1710;
     private static final int WARN      = 0xFFFFB74D;
     private static final int DANGER    = 0xFFFF726F;
+    private static final int REQ_LOG_EXPORT = 9001;
 
     private static final String[] TABS = {"quick", "controls", "graphics", "system"};
     private static final String[] TAB_LABELS = {"Quick", "Controls", "Graphics", "System"};
@@ -64,6 +67,7 @@ public final class GameMenu {
 
     private static LinearLayout railList;
     private static LinearLayout body;
+    private static TextView exitRailBtn;
 
     private GameMenu() {}
 
@@ -119,7 +123,8 @@ public final class GameMenu {
         railList.setOrientation(LinearLayout.VERTICAL);
         rail.addView(railList, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        TextView exitRail = text(a, "Exit Game", 13, DANGER, true);
+        TextView exitRail = text(a, UiText.tr(a, "Exit Game", "Keluar Game"), 13, DANGER, true);
+        exitRailBtn = exitRail;
         exitRail.setGravity(Gravity.CENTER);
         exitRail.setPadding(dp(a, 12), dp(a, 9), dp(a, 12), dp(a, 9));
         exitRail.setBackground(round(CHIP, dp(a, 12), 1, CARD_LINE));
@@ -176,6 +181,7 @@ public final class GameMenu {
             dlg = null;
             railList = null;
             body = null;
+            exitRailBtn = null;
             if (cur == di && pad != null) {
                 if (skipUnpauseOnDismiss) {
                     pad.menuOpen = false;
@@ -207,6 +213,33 @@ public final class GameMenu {
         }
     }
 
+    private static void exportLogs(Activity a) {
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/zip")
+                .putExtra(Intent.EXTRA_TITLE, LogExporter.suggestedFileName());
+        a.startActivityForResult(i, REQ_LOG_EXPORT);
+    }
+
+    public static void onActivityResult(final Activity a, int req, int res, Intent data) {
+        if (req != REQ_LOG_EXPORT || res != Activity.RESULT_OK || data == null || data.getData() == null) return;
+        final Uri uri = data.getData();
+        new Thread(() -> {
+            try {
+                final LogExporter.ExportResult r = LogExporter.exportZip(a, uri);
+                a.runOnUiThread(() -> Toast.makeText(a,
+                        UiText.tr(a,
+                                String.format(Locale.ROOT, "Exported %d log files (%d KB)", r.fileCount, Math.max(1, r.zipBytes >> 10)),
+                                String.format(Locale.ROOT, "Berhasil ekspor %d file log (%d KB)", r.fileCount, Math.max(1, r.zipBytes >> 10))),
+                        Toast.LENGTH_LONG).show());
+            } catch (final Exception e) {
+                a.runOnUiThread(() -> Toast.makeText(a,
+                        UiText.tr(a, "Log export failed: ", "Gagal ekspor log: ") + e.getMessage(),
+                        Toast.LENGTH_LONG).show());
+            }
+        }).start();
+    }
+
     private static void redraw() {
         if (host == null || railList == null || body == null) return;
         rebuildRail(host);
@@ -219,10 +252,16 @@ public final class GameMenu {
 
     private static void rebuildRail(Activity a) {
         railList.removeAllViews();
+        String[] tabNames = new String[]{
+            UiText.tr(a, "Quick", "Cepat"),
+            UiText.tr(a, "Controls", "Kontrol"),
+            UiText.tr(a, "Graphics", "Grafis"),
+            UiText.tr(a, "System", "Sistem")
+        };
         for (int i = 0; i < TABS.length; i++) {
             final String id = TABS[i];
             boolean on = id.equals(activeTab);
-            TextView tab = text(a, TAB_LABELS[i], 14, on ? INK : SUB, true);
+            TextView tab = text(a, tabNames[i], 14, on ? INK : SUB, true);
             tab.setPadding(dp(a, 14), dp(a, 10), dp(a, 14), dp(a, 10));
             tab.setBackground(on ? round(ACCENT, dp(a, 12), 0, 0) : null);
             tab.setOnClickListener(v -> {
@@ -236,12 +275,64 @@ public final class GameMenu {
             lp.bottomMargin = dp(a, 4);
             railList.addView(tab, lp);
         }
+
+        // Export Log button right above ID | ENG pill at bottom of railList
+        View spacer = new View(a);
+        railList.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        TextView btnExportLog = text(a, UiText.tr(a, "Export Log", "Ekspor Log"), 11, ACCENT, true);
+        btnExportLog.setGravity(Gravity.CENTER);
+        btnExportLog.setPadding(dp(a, 8), dp(a, 7), dp(a, 8), dp(a, 7));
+        btnExportLog.setBackground(round(CHIP, dp(a, 10), 1, CARD_LINE));
+        btnExportLog.setOnClickListener(v -> exportLogs(a));
+        LinearLayout.LayoutParams exLp = new LinearLayout.LayoutParams(-1, -2);
+        exLp.topMargin = dp(a, 8);
+        exLp.bottomMargin = dp(a, 6);
+        railList.addView(btnExportLog, exLp);
+
+        LinearLayout langBox = new LinearLayout(a);
+        langBox.setOrientation(LinearLayout.HORIZONTAL);
+        langBox.setPadding(dp(a, 3), dp(a, 3), dp(a, 3), dp(a, 3));
+        langBox.setBackground(round(CHIP, dp(a, 10), 1, CARD_LINE));
+        boolean isId = UiText.isId(a);
+
+        TextView btnId = text(a, "ID", 11, isId ? INK : SUB, true);
+        btnId.setGravity(Gravity.CENTER);
+        btnId.setPadding(dp(a, 8), dp(a, 6), dp(a, 8), dp(a, 6));
+        if (isId) btnId.setBackground(round(ACCENT, dp(a, 8), 0, 0));
+        btnId.setOnClickListener(v -> {
+            if (!UiText.isId(a)) {
+                UiText.setLang(a, "id");
+                redraw();
+            }
+        });
+
+        TextView btnEng = text(a, "ENG", 11, !isId ? INK : SUB, true);
+        btnEng.setGravity(Gravity.CENTER);
+        btnEng.setPadding(dp(a, 8), dp(a, 6), dp(a, 8), dp(a, 6));
+        if (!isId) btnEng.setBackground(round(ACCENT, dp(a, 8), 0, 0));
+        btnEng.setOnClickListener(v -> {
+            if (UiText.isId(a)) {
+                UiText.setLang(a, "en");
+                redraw();
+            }
+        });
+
+        langBox.addView(btnId, new LinearLayout.LayoutParams(0, -2, 1f));
+        langBox.addView(btnEng, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(-1, -2);
+        llp.bottomMargin = dp(a, 8);
+        railList.addView(langBox, llp);
+
+        if (exitRailBtn != null) {
+            exitRailBtn.setText(UiText.tr(a, "Exit Game", "Keluar Game"));
+        }
     }
 
     // ---------- Pages ----------
 
     private static void buildQuick(Activity a) {
-        heading(a, "Game Session");
+        heading(a, UiText.tr(a, "Game Session", "Sesi Game"));
 
         // Primary CTA row: Resume + Edit Touch Layout
         LinearLayout ctaRow = new LinearLayout(a);
@@ -250,7 +341,7 @@ public final class GameMenu {
         rlp.bottomMargin = dp(a, 12);
         body.addView(ctaRow, rlp);
 
-        TextView resume = text(a, "Resume Game", 15, INK, true);
+        TextView resume = text(a, UiText.tr(a, "Resume Game", "Lanjutkan Game"), 15, INK, true);
         resume.setGravity(Gravity.CENTER);
         resume.setPadding(dp(a, 18), dp(a, 13), dp(a, 18), dp(a, 13));
         resume.setBackground(round(ACCENT, dp(a, 16), 0, 0));
@@ -259,7 +350,7 @@ public final class GameMenu {
         l1.rightMargin = dp(a, 8);
         ctaRow.addView(resume, l1);
 
-        TextView edit = text(a, "Edit Touch Layout", 14, TEXT, true);
+        TextView edit = text(a, UiText.tr(a, "Edit Touch Layout", "Atur Tombol Layar"), 14, TEXT, true);
         edit.setGravity(Gravity.CENTER);
         edit.setPadding(dp(a, 14), dp(a, 13), dp(a, 14), dp(a, 13));
         edit.setBackground(round(CARD, dp(a, 16), dp(a, 1), ACCENT));
@@ -269,42 +360,55 @@ public final class GameMenu {
         });
         ctaRow.addView(edit, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        heading(a, "Quick Controls");
+        heading(a, UiText.tr(a, "Quick Controls", "Kontrol Cepat"));
         presetCard(a);
-        toggleRowCard(a, "Show FPS Counter",
-                "Display live frame rate counter in top-left corner",
+        actionCard(a, UiText.tr(a, "Auto-Tune This Device", "Sesuaikan Otomatis HP Ini"),
+                UiText.tr(a,
+                        "Detects your CPU core layout, GPU (Mali/Adreno) & optimal 720p settings. Applies next start.",
+                        "Deteksi otomatis tipe GPU (Mali/Adreno), core CPU & setelan 720p paling pas. Aktif saat restart."),
+                () -> {
+                    GameSettings.autoTuneDevice(a);
+                    restartNeeded.add("DM_OPMODE");
+                    redraw();
+                });
+        toggleRowCard(a, UiText.tr(a, "Show FPS Counter", "Tampilkan Counter FPS"),
+                UiText.tr(a, "Display live frame rate counter in top-left corner",
+                        "Tampilkan penghitung FPS langsung di pojok kiri atas"),
                 pad != null && pad.fpsOn,
                 null,
                 checked -> {
                     if (pad != null) pad.fpsSet(checked);
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
-        envToggleCard(a, "Mali FP16 Fast Math", "DM_VK_MALI_FP16", true,
-                "Keep enabled on Dimensity / Mali GPUs for smoother shader throughput");
+        envToggleCard(a, UiText.tr(a, "Mali FP16 Fast Math", "Mali FP16 Fast Math"), "DM_VK_MALI_FP16", true,
+                UiText.tr(a, "Enable for Mali / Dimensity / Helio GPUs; disable on Adreno if preferred",
+                        "Aktifkan untuk GPU Mali / MediaTek / Exynos; matikan di Adreno jika tidak perlu"));
     }
 
     private static void buildControls(Activity a) {
-        heading(a, "Touch Controller");
+        heading(a, UiText.tr(a, "Touch Controller", "Kontrol Sentuh"));
         presetCard(a);
 
-        sliderCard(a, "Touch Opacity", pad != null ? pad.opacityPct : 75, 20, 100,
+        sliderCard(a, UiText.tr(a, "Touch Opacity", "Transparansi Tombol"), pad != null ? pad.opacityPct : 75, 20, 100,
                 v -> v + " %",
                 v -> { if (pad != null) pad.setOpacity(v); });
 
         int scalePct = pad != null ? Math.round(pad.globalScale * 100f) : 100;
-        sliderCard(a, "Button Scale", scalePct, 65, 135,
+        sliderCard(a, UiText.tr(a, "Button Scale", "Ukuran Tombol"), scalePct, 65, 135,
                 v -> v + " %",
                 v -> { if (pad != null) pad.setGlobalScale(v / 100f); });
 
-        actionCard(a, "Edit Touch Positions",
-                "Drag any control to move it, or tap and adjust individual button scale.",
+        actionCard(a, UiText.tr(a, "Edit Touch Positions", "Ubah Posisi Tombol"),
+                UiText.tr(a, "Drag any control to move it, or tap and adjust individual button scale.",
+                        "Geser tombol ke posisi mana saja, atau ketuk untuk ubah ukuran per tombol."),
                 () -> {
                     skipUnpauseOnDismiss = true;
                     dismiss();
                 });
 
-        actionCard(a, "Reset Touch Layout",
-                "Restore default Eastward RPG positions for the current preset.",
+        actionCard(a, UiText.tr(a, "Reset Touch Layout", "Reset Posisi Tombol"),
+                UiText.tr(a, "Restore default Eastward RPG positions for the current preset.",
+                        "Kembalikan posisi default RPG Eastward sesuai preset aktif."),
                 () -> {
                     if (pad != null) pad.resetPresetLayout();
                     redraw();
@@ -312,9 +416,10 @@ public final class GameMenu {
     }
 
     private static void buildGraphics(Activity a) {
-        heading(a, "Display & Performance");
-        toggleRowCard(a, "FPS Overlay",
-                "Show live frames-per-second counter in corner",
+        heading(a, UiText.tr(a, "Display & Performance", "Tampilan & Performa"));
+        toggleRowCard(a, UiText.tr(a, "FPS Overlay", "Overlay FPS"),
+                UiText.tr(a, "Show live frames-per-second counter in corner",
+                        "Tampilkan counter FPS langsung di sudut layar"),
                 pad != null && pad.fpsOn,
                 null,
                 checked -> {
@@ -322,42 +427,171 @@ public final class GameMenu {
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
 
-        envChoiceCard(a, "Render Resolution", "DM_OPMODE", "0", new String[][]{
-            {"0", "Handheld 720p", "Recommended for smooth 60 fps and cooler battery"},
-            {"1", "Docked 1080p", "Sharper picture at 1920x1080; heavier GPU load"}
+        actionCard(a, UiText.tr(a, "Auto-Tune This Device", "Sesuaikan Otomatis HP Ini"),
+                UiText.tr(a,
+                        "Detects your GPU vendor, CPU big/little cluster mask & optimal settings.",
+                        "Deteksi otomatis jenis GPU, posisi core CPU besar/kecil & profil terbaik untuk HP ini."),
+                () -> {
+                    GameSettings.autoTuneDevice(a);
+                    restartNeeded.add("DM_VK_PIN");
+                    redraw();
+                });
+
+        envChoiceCard(a, UiText.tr(a, "Render Resolution", "Resolusi Render"), "DM_OPMODE", "0", new String[][]{
+            {"0", UiText.tr(a, "Handheld 720p", "720p Ringan"),
+                    UiText.tr(a, "Recommended for entry/midrange phones and cooler battery",
+                            "Direkomendasikan untuk mayoritas HP Android agar lancar & adem")},
+            {"1", UiText.tr(a, "Docked 1080p", "1080p Tajam"),
+                    UiText.tr(a, "Sharper picture at 1920x1080 for flagship SoCs",
+                            "Gambar lebih tajam 1920x1080 untuk HP kelas flagship")}
         });
 
-        heading(a, "Vulkan Pipeline Flags");
-        envToggleCard(a, "Mali FP16 Fast Math", "DM_VK_MALI_FP16", true,
-                "Lowers shader register pressure on Mali / Dimensity GPUs");
-        envToggleCard(a, "RenderPass Clear LoadOp", "DM_VK_CLEAR_LOADOP", true,
-                "Uses fast tile clear; recommended for both Adreno and Mali");
-        envToggleCard(a, "Descriptor Set Reuse", "DM_VK_SET_REUSE", true,
-                "Reduces per-frame Vulkan descriptor allocation overhead");
-        envToggleCard(a, "Precise SPIR-V Float", "DM_SPV_PRECISE", false,
-                "Enable only if troubleshooting rare shader math artifacts");
+        envChoiceCard(a, UiText.tr(a, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "", new String[][]{
+            {"", UiText.tr(a, "60 Hz VSync (Default)", "60 Hz VSync (Standar)"),
+                    UiText.tr(a, "Standard Switch frame pacing sync",
+                            "Sinkronisasi pacing frame standar Switch")},
+            {"0", UiText.tr(a, "Uncapped (Experimental)", "Tanpa Batas (Eksperimen)"),
+                    UiText.tr(a, "Disables NVN present wait; may shift frame-counted UI",
+                            "Matikan jeda present NVN; untuk tes performa mentah")}
+        });
+
+        heading(a, UiText.tr(a, "CPU & Chipset Tuning", "Tuning CPU & Chipset"));
+        cpuPinCard(a);
+        envChoiceCard(a, UiText.tr(a, "CPU Clock Boost (UClamp)", "Boost Clock CPU (UClamp)"), "DM_VK_UCLAMP_MIN", "0", new String[][]{
+            {"0", UiText.tr(a, "Auto / Off", "Otomatis / Mati"),
+                    UiText.tr(a, "Let Android governor manage CPU clocks",
+                            "Biarkan sistem Android mengatur frekuensi CPU")},
+            {"512", UiText.tr(a, "Balanced (512)", "Seimbang (512)"),
+                    UiText.tr(a, "Moderate CPU clamp (Android 11+ / supported kernels)",
+                            "Batas bawah frekuensi sedang (aktif di Android 11+ / kernel support)")},
+            {"800", UiText.tr(a, "Performance (800)", "Performa (800)"),
+                    UiText.tr(a, "High boost for render thread on supported kernels",
+                            "Boost tinggi untuk thread render di kernel yang mendukung")},
+            {"1024", UiText.tr(a, "Max (1024)", "Maksimal (1024)"),
+                    UiText.tr(a, "Request peak clocks; warmer battery",
+                            "Minta clock CPU tertinggi; lebih hangat & boros baterai")}
+        });
+
+        heading(a, UiText.tr(a, "GPU & Shader Flags", "Pengaturan GPU & Shader"));
+        envToggleCard(a, UiText.tr(a, "Mali FP16 Fast Math", "Mali FP16 Fast Math"), "DM_VK_MALI_FP16", true,
+                UiText.tr(a, "Speeds up shaders on Mali GPUs; turn off on Adreno/Turnip",
+                        "Ringankan shader di GPU Mali; matikan di HP Snapdragon Adreno/Turnip"));
+        envToggleCard(a, UiText.tr(a, "TBDR Clear LoadOp", "TBDR Clear LoadOp"), "DM_VK_CLEAR_LOADOP", true,
+                UiText.tr(a, "Fast tile clear; recommended for both Adreno and Mali",
+                        "Clear tile cepat untuk GPU mobile (Adreno & Mali)"));
+        envToggleCard(a, UiText.tr(a, "Descriptor Set Reuse", "Gunakan Ulang Descriptor"), "DM_VK_SET_REUSE", true,
+                UiText.tr(a, "Reduces per-frame Vulkan CPU allocation overhead",
+                        "Kurangi beban CPU alokasi descriptor Vulkan tiap frame"));
+        envToggleCard(a, UiText.tr(a, "Async Shader Compile", "Kompilasi Shader Latar"), "DM_VK_ASYNC_PIPE", true,
+                UiText.tr(a, "Compiles new shaders in background to prevent freezes",
+                        "Bangun shader baru di latar belakang agar tidak patah-patah"));
+        envToggleCard(a, UiText.tr(a, "Display Timing Sync", "Sinkronisasi Timing Layar"), "DM_VK_PRESENT_TIMING", true,
+                UiText.tr(a, "Turn off if frame pacing stutters on your ROM or driver",
+                        "Matikan jika terasa tersendat pada driver/ROM HP tertentu"));
+        envToggleCard(a, UiText.tr(a, "Precise SPIR-V Float", "Presisi Float SPIR-V"), "DM_SPV_PRECISE", false,
+                UiText.tr(a, "Enable only if troubleshooting rare shader math artifacts",
+                        "Aktifkan hanya jika ada glitch warna atau garis di shader"));
+    }
+
+    private static void cpuPinCard(Activity a) {
+        String cur = GameSettings.get(a, "DM_VK_PIN", "");
+        String[][] opts = new String[][]{
+            {"", UiText.tr(a, "OS Auto Scheduler", "Otomatis (OS Scheduler)"),
+                    UiText.tr(a, "Default: let Android decide CPU core placement",
+                            "Standar: biarkan sistem Android mengatur penempatan core")},
+            {"c0", UiText.tr(a, "2+6 Big.LITTLE (0xC0 / 0x3F)", "2+6 Big.LITTLE (0xC0 / 0x3F)"),
+                    UiText.tr(a, "For 2-big + 6-little SoCs (MediaTek Helio / mid-tier 8-core)",
+                            "Untuk chipset 2 core besar + 6 core kecil (cpu6-7 untuk render)")},
+            {"f0", UiText.tr(a, "4+4 Big.LITTLE (0xF0 / 0x0F)", "4+4 Big.LITTLE (0xF0 / 0x0F)"),
+                    UiText.tr(a, "For 4-big + 4-little SoCs (Snapdragon / Exynos 4+4)",
+                            "Untuk chipset 4 core besar + 4 core kecil (cpu4-7 untuk render)")},
+            {"80", UiText.tr(a, "1+3+4 Prime Core (0x80 / 0x7F)", "1+3+4 Prime Core (0x80 / 0x7F)"),
+                    UiText.tr(a, "For tri-cluster SoCs with 1 prime core (Snapdragon 7+/8, Dimensity 8/9)",
+                            "Untuk chipset flagship 1 prime core (cpu7 untuk render)")}
+        };
+        LinearLayout c = card(a);
+        titleRow(a, c, UiText.tr(a, "CPU Thread Placement", "Penempatan Thread CPU"),
+                restartNeeded.contains("DM_VK_PIN") ? UiText.tr(a, "Applies next start", "Aktif saat restart") : null);
+        for (int i = 0; i < opts.length; i++) {
+            final String val = opts[i][0];
+            boolean sel = cur.equalsIgnoreCase(val);
+            LinearLayout row = new LinearLayout(a);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(a, 10), dp(a, 9), dp(a, 10), dp(a, 9));
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(sel ? 0x26F5C428 : CHIP);
+            bg.setCornerRadius(dp(a, 10));
+            if (sel) bg.setStroke(dp(a, 1), ACCENT);
+            row.setBackground(bg);
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+            rlp.topMargin = dp(a, i == 0 ? 8 : 6);
+            row.setLayoutParams(rlp);
+
+            LinearLayout col = new LinearLayout(a);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+            col.addView(text(a, opts[i][1], 13, sel ? ACCENT : TEXT, true));
+            TextView sub = text(a, opts[i][2], 11, SUB, false);
+            sub.setPadding(0, dp(a, 1), 0, 0);
+            col.addView(sub);
+            row.addView(col);
+            if (sel) row.addView(text(a, "\u2713", 15, ACCENT, true));
+            row.setOnClickListener(v -> {
+                if (!cur.equalsIgnoreCase(val)) {
+                    GameSettings.setCpuPin(a, val);
+                    restartNeeded.add("DM_VK_PIN");
+                    redraw();
+                }
+            });
+            c.addView(row);
+        }
     }
 
     private static void buildSystem(Activity a) {
-        heading(a, "Device & Vulkan Runtime");
+        heading(a, UiText.tr(a, "Menu Language", "Bahasa Menu"));
+        LinearLayout langCard = card(a);
+        titleRow(a, langCard, UiText.tr(a, "Interface Language (ID | ENG)", "Bahasa Tampilan (ID | ENG)"), null);
+        LinearLayout langRow = new LinearLayout(a);
+        langRow.setOrientation(LinearLayout.HORIZONTAL);
+        langRow.setPadding(0, dp(a, 10), 0, 0);
+        boolean isId = UiText.isId(a);
+        TextView chId = pillButton(a, "Indonesia (ID)", isId, () -> {
+            UiText.setLang(a, "id");
+            redraw();
+        });
+        TextView chEng = pillButton(a, "English (ENG)", !isId, () -> {
+            UiText.setLang(a, "en");
+            redraw();
+        });
+        LinearLayout.LayoutParams lpLang = new LinearLayout.LayoutParams(0, -2, 1f);
+        lpLang.rightMargin = dp(a, 8);
+        langRow.addView(chId, lpLang);
+        langRow.addView(chEng, new LinearLayout.LayoutParams(0, -2, 1f));
+        langCard.addView(langRow);
+
+        heading(a, UiText.tr(a, "Device & Vulkan Runtime", "Perangkat & Runtime Vulkan"));
         LinearLayout infoCard = card(a);
-        infoCard.addView(text(a, "Active Vulkan Driver", 15, TEXT, true));
+        infoCard.addView(text(a, UiText.tr(a, "Active Vulkan Driver", "Driver Vulkan Aktif"), 15, TEXT, true));
         TextView drv = text(a, GameSettings.driverLabel(a), 14, ACCENT, true);
         drv.setPadding(0, dp(a, 4), 0, dp(a, 6));
         infoCard.addView(drv);
 
         Map<String, String> vk = GameSettings.vkInfo(a);
         String vkMeta = vk.isEmpty()
-                ? "Detected automatically per device (Turnip on Adreno, System Vulkan on Mali/others)."
+                ? UiText.tr(a,
+                        "Detected automatically per device (Turnip on Adreno, System Vulkan on Mali/others).",
+                        "Terdeteksi otomatis per HP (Turnip di Adreno, Vulkan Bawaan di Mali/lainnya).")
                 : String.format(Locale.ROOT, "Vendor: %s  |  Vulkan: %s  |  Mode: %s",
                         nonEmpty(vk.get("vendor"), "Auto"),
                         nonEmpty(vk.get("api"), "1.1+"),
                         nonEmpty(vk.get("mode"), "Normal"));
         infoCard.addView(text(a, vkMeta, 12, SUB, false));
 
-        heading(a, "Launcher & Session");
-        actionCard(a, "Open Setup & Driver Manager",
-                "Close game session and return to Eastward Custom Setup.",
+        heading(a, UiText.tr(a, "Launcher & Session", "Launcher & Sesi"));
+        actionCard(a, UiText.tr(a, "Open Setup & Driver Manager", "Buka Pengaturan Awal & Driver"),
+                UiText.tr(a, "Close game session and return to Eastward Custom Setup.",
+                        "Tutup sesi game dan kembali ke halaman Setup Eastward Custom."),
                 () -> {
                     Intent it = new Intent(a, SetupActivity.class);
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -367,29 +601,32 @@ public final class GameMenu {
                 });
 
         if (!confirmQuit) {
-            actionCard(a, "Quit Eastward",
-                    "Close the game cleanly and stop the runtime process.",
+            actionCard(a, UiText.tr(a, "Quit Eastward", "Keluar dari Eastward"),
+                    UiText.tr(a, "Close the game cleanly and stop the runtime process.",
+                            "Tutup game dengan aman dan hentikan proses runtime."),
                     () -> {
                         confirmQuit = true;
                         redraw();
                     });
         } else {
             LinearLayout qc = card(a);
-            qc.addView(text(a, "Close Eastward now?", 15, TEXT, true));
-            TextView sub = text(a, "Make sure you saved your progress inside the game first.", 13, SUB, false);
+            qc.addView(text(a, UiText.tr(a, "Close Eastward now?", "Tutup Eastward sekarang?"), 15, TEXT, true));
+            TextView sub = text(a, UiText.tr(a,
+                    "Make sure you saved your progress inside the game first.",
+                    "Pastikan kamu sudah melakukan Save di dalam game terlebih dahulu."), 13, SUB, false);
             sub.setPadding(0, dp(a, 4), 0, dp(a, 10));
             qc.addView(sub);
 
             LinearLayout row = new LinearLayout(a);
             row.setOrientation(LinearLayout.HORIZONTAL);
-            TextView yes = pillButton(a, "Quit Now", true, () -> {
+            TextView yes = pillButton(a, UiText.tr(a, "Quit Now", "Keluar Sekarang"), true, () -> {
                 a.finishAffinity();
                 Process.killProcess(Process.myPid());
             });
             yes.setBackground(round(DANGER, dp(a, 14), 0, 0));
             yes.setTextColor(0xFF1A0909);
 
-            TextView cancel = pillButton(a, "Cancel", false, () -> {
+            TextView cancel = pillButton(a, UiText.tr(a, "Cancel", "Batal"), false, () -> {
                 confirmQuit = false;
                 redraw();
             });
@@ -405,7 +642,7 @@ public final class GameMenu {
 
     private static void presetCard(Activity a) {
         LinearLayout c = card(a);
-        titleRow(a, c, "Controller Preset", null);
+        titleRow(a, c, UiText.tr(a, "Controller Preset", "Preset Kontroler"), null);
         HorizontalScrollView hs = new HorizontalScrollView(a);
         hs.setHorizontalScrollBarEnabled(false);
         LinearLayout row = new LinearLayout(a);
@@ -436,7 +673,7 @@ public final class GameMenu {
 
     private static void envChoiceCard(Activity a, String title, String key, String def, String[][] opts) {
         LinearLayout c = card(a);
-        String tag = restartNeeded.contains(key) ? "Applies next start" : null;
+        String tag = restartNeeded.contains(key) ? UiText.tr(a, "Applies next start", "Aktif saat restart") : null;
         titleRow(a, c, title, tag);
 
         String cur = GameSettings.get(a, key, def);
@@ -471,7 +708,7 @@ public final class GameMenu {
     private static void envToggleCard(Activity a, String title, String key, boolean defVal, String desc) {
         boolean cur = "1".equals(GameSettings.get(a, key, defVal ? "1" : "0"));
         toggleRowCard(a, title, desc, cur,
-                restartNeeded.contains(key) ? "Applies next start" : null,
+                restartNeeded.contains(key) ? UiText.tr(a, "Applies next start", "Aktif saat restart") : null,
                 checked -> {
                     GameSettings.set(a, key, checked ? "1" : "0");
                     restartNeeded.add(key);
