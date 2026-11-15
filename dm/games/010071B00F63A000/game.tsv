@@ -5,9 +5,9 @@ title_id	010071B00F63A000
 program_id	010071B00F63A000
 
 # ---- App ----
-app_repo	github.com/Itsneslab/Eastward-Native-Android
+app_repo	github.com/Itsneslab/Eastward-Custom-Android
 app_icon	f5c428 161820
-app_name	Eastward Native
+app_name	Eastward Custom
 name	Eastward
 ipa	Eastward.ipa
 app_category	public.app-category.games

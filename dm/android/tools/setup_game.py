@@ -248,8 +248,9 @@ def main():
 
     spv_files = [f for f in os.listdir(spv_out) if f.endswith('.spv') and not f.endswith('.z.spv')]
     if not spv_files:
-        raise RuntimeError('no translated shaders were produced')
-    log.write(f'translated {len(spv_files)} SPIR-V shaders into {spv_out}\n')
+        log.write('warning: 0 pre-captured .glslc shaders found yet; boot once to capture via DM_GLSLC_CAPTURE, then re-run shader translation\n')
+    else:
+        log.write(f'translated {len(spv_files)} SPIR-V shaders into {spv_out}\n')
     print('PROGRESS 100/100', flush=True)
 
     step(4)

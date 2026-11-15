@@ -2,6 +2,7 @@
 
 [![Language: English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![Language: Indonesia](https://img.shields.io/badge/lang-Bahasa%20Indonesia-red.svg)](README.id.md)
+[![Latest Release](https://img.shields.io/badge/Download-APK%20(Releases)-gold.svg)](https://github.com/Itsneslab/Eastward-Custom-Android/releases/latest)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3+-green.svg)](LICENSE)
 [![Android API](https://img.shields.io/badge/Android-10%20to%2015%2B%20(API%2029--35)-brightgreen.svg)](dm/android/app/AndroidManifest.xml)
 [![Architecture](https://img.shields.io/badge/ABI-arm64--v8a%20(16KB%20aligned)-orange.svg)](dm/android/CMakeLists.txt)

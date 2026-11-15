@@ -50,10 +50,14 @@ def make_dm_zip(dst_zip: Path):
     dm = PROJ / 'dm'
     fonts = PROJ / 'prebuilt/assets/font'
     with zipfile.ZipFile(dst_zip, 'w', compression=zipfile.ZIP_DEFLATED) as z:
-        # 1. Eastward profile & metadata
+        # 1. Eastward profile & metadata (exclude glslc_capture/*.glslc for legal compliance)
         for f in (dm / 'games/010071B00F63A000').rglob('*'):
-            if f.is_file():
-                z.write(f, f.relative_to(dm).as_posix())
+            if not f.is_file():
+                continue
+            rel = f.relative_to(dm)
+            if 'glslc_capture' in rel.parts or f.suffix.lower() == '.glslc':
+                continue
+            z.write(f, rel.as_posix())
         z.write(dm / 'games/game.py', 'games/game.py')
         z.write(dm / 'games/profile_guess.py', 'games/profile_guess.py')
         z.write(dm / 'gfx/nvn/dmsh_chain.h', 'gfx/nvn/dmsh_chain.h')
@@ -66,11 +70,10 @@ def make_dm_zip(dst_zip: Path):
                 if f.is_file() and '__pycache__' not in f.parts and f.suffix in ('.py', '.txt'):
                     z.write(f, f.relative_to(dm).as_posix())
 
-        # 3. Fonts (hinted UI font + Switch button glyph font)
-        for nm in ('standard.ttf', 'nintendo_ext.ttf'):
-            fp = fonts / nm
-            if fp.is_file():
-                z.write(fp, f'android/assets/{nm}')
+        # 3. Open-source Switch button glyph stand-in font (system Roboto handles UI text)
+        ext_font = fonts / 'nintendo_ext.ttf'
+        if ext_font.is_file():
+            z.write(ext_font, 'android/assets/nintendo_ext.ttf')
 
 
 def build_dex(classes_dir: Path, dex_dir: Path):
