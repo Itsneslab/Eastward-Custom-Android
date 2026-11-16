@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1.7", 11, ACCENT, true));
+        brandCol.addView(text(a, "Custom v1.1.8", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -425,7 +425,7 @@ public final class GameMenu {
     }
 
     private static void buildGraphics(Activity a) {
-        heading(a, UiText.tr(a, "Display & Performance", "Tampilan & Performa"));
+        heading(a, UiText.tr(a, "Display & Pixel Quality", "Tampilan & Kualitas Piksel"));
         toggleRowCard(a, UiText.tr(a, "FPS Overlay", "Overlay FPS"),
                 UiText.tr(a, "Show live frames-per-second counter in corner",
                         "Tampilkan counter FPS langsung di sudut layar"),
@@ -436,13 +436,13 @@ public final class GameMenu {
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
 
-        actionCard(a, UiText.tr(a, "Auto-Tune This Device", "Sesuaikan Otomatis HP Ini"),
-                UiText.tr(a,
-                        "Detects your GPU vendor, CPU big/little cluster mask & optimal settings.",
-                        "Deteksi otomatis jenis GPU, posisi core CPU besar/kecil & profil terbaik untuk HP ini."),
+        actionCard(a, UiText.tr(a, "Auto-Chipset Optimization", "Optimasi Chipset Otomatis"),
+                GameSettings.detectedChipsetSummary(a) + "\n"
+                        + UiText.tr(a, "Tap to restore 100% crisp + auto chipset defaults.",
+                        "Ketuk untuk reset ke 100% tajam + setelan otomatis chipset ini."),
                 () -> {
                     GameSettings.autoTuneDevice(a);
-                    restartNeeded.add("DM_VK_PIN");
+                    restartNeeded.add("DM_OPMODE");
                     redraw();
                 });
 
@@ -455,147 +455,25 @@ public final class GameMenu {
                             "Gambar lebih tajam 1920x1080 untuk HP kelas flagship")}
         });
 
-        envChoiceCard(a, UiText.tr(a, "GPU Render Scale", "Skala Render GPU"), "DM_VK_FB_SCALE", "100", new String[][]{
-            {"100", UiText.tr(a, "100% Native", "100% Asli"),
-                    UiText.tr(a, "Full native pixel count; best for flagship GPUs",
-                            "Resolusi penuh tanpa skala; untuk GPU flagship")},
-            {"80", UiText.tr(a, "80% Crisp (-36% GPU load)", "80% Tajam (-36% beban GPU)"),
-                    UiText.tr(a, "Sharp visual balance with lower fillrate load",
-                            "Keseimbangan tajam dan ringan di GPU")},
+        envChoiceCard(a, UiText.tr(a, "Pixel Quality (Render Scale)", "Kualitas Piksel (Skala Render)"), "DM_VK_FB_SCALE", "100", new String[][]{
+            {"100", UiText.tr(a, "100% Native (Crisp)", "100% Asli (Tajam)"),
+                    UiText.tr(a, "Full native pixel-art sharpness (default)",
+                            "Ketajaman pixel-art penuh tanpa blur (bawaan)")},
+            {"80", UiText.tr(a, "80% Balanced (-36% GPU load)", "80% Seimbang (-36% beban GPU)"),
+                    UiText.tr(a, "Moderate GPU savings with slight softening",
+                            "Hemat beban GPU dengan sedikit penurunan ketajaman")},
             {"75", UiText.tr(a, "75% Smooth 540p (-44% GPU load)", "75% Lancar 540p (-44% beban GPU)"),
-                    UiText.tr(a, "Recommended for Snapdragon 6xx & Helio Gxx GPUs for 40-60 fps",
-                            "Direkomendasikan untuk Adreno 610 & Mali-G52 agar tembus 40-60 fps")},
+                    UiText.tr(a, "Higher FPS on entry GPUs at softer image quality",
+                            "FPS lebih tinggi di GPU kelas menengah, gambar lebih lembut")},
             {"67", UiText.tr(a, "67% Fast 480p (-55% GPU load)", "67% Ngebut 480p (-55% beban GPU)"),
                     UiText.tr(a, "Maximum GPU headroom on heavy outdoor areas",
                             "Ringankan beban GPU maksimal di area berat")}
         });
 
-        envChoiceCard(a, UiText.tr(a, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "", new String[][]{
-            {"", UiText.tr(a, "60 Hz VSync (Default)", "60 Hz VSync (Standar)"),
-                    UiText.tr(a, "Standard Switch frame pacing sync",
-                            "Sinkronisasi pacing frame standar Switch")},
-            {"0", UiText.tr(a, "Uncapped (Experimental)", "Tanpa Batas (Eksperimen)"),
-                    UiText.tr(a, "Disables NVN present wait; may shift frame-counted UI",
-                            "Matikan jeda present NVN; untuk tes performa mentah")}
-        });
-
-        heading(a, UiText.tr(a, "CPU & Chipset Tuning", "Tuning CPU & Chipset"));
-        cpuPinCard(a);
-        envChoiceCard(a, UiText.tr(a, "CPU Clock Boost (UClamp)", "Boost Clock CPU (UClamp)"), "DM_VK_UCLAMP_MIN", "0", new String[][]{
-            {"0", UiText.tr(a, "Auto / Off", "Otomatis / Mati"),
-                    UiText.tr(a, "Let Android governor manage CPU clocks",
-                            "Biarkan sistem Android mengatur frekuensi CPU")},
-            {"512", UiText.tr(a, "Balanced (512)", "Seimbang (512)"),
-                    UiText.tr(a, "Moderate CPU clamp (Android 11+ / supported kernels)",
-                            "Batas bawah frekuensi sedang (aktif di Android 11+ / kernel support)")},
-            {"800", UiText.tr(a, "Performance (800)", "Performa (800)"),
-                    UiText.tr(a, "High boost for render thread on supported kernels",
-                            "Boost tinggi untuk thread render di kernel yang mendukung")},
-            {"1024", UiText.tr(a, "Max (1024)", "Maksimal (1024)"),
-                    UiText.tr(a, "Request peak clocks; warmer battery",
-                            "Minta clock CPU tertinggi; lebih hangat & boros baterai")}
-        });
-
-        envChoiceCard(a, UiText.tr(a, "Adreno GPU Clock Boost", "Boost Clock GPU Adreno"), "DM_VK_GPU_FLOOR", "0", new String[][]{
-            {"0", UiText.tr(a, "Off", "Mati"),
-                    UiText.tr(a, "Let Adreno GMU scale GPU clock dynamically",
-                            "Biarkan governor Adreno mengatur clock GPU otomatis")},
-            {"85", UiText.tr(a, "High Floor (85%)", "Floor Tinggi (85%)"),
-                    UiText.tr(a, "Prevents Adreno downclocking between CPU chunks (Snapdragon only)",
-                            "Cegah clock Adreno turun di sela chunk CPU (khusus Snapdragon)")},
-            {"100", UiText.tr(a, "Max Lock (100%)", "Kunci Maksimal (100%)"),
-                    UiText.tr(a, "Request peak Adreno KGSL clock; warmer battery",
-                            "Minta clock tertinggi KGSL Adreno; baterai lebih hangat")}
-        });
-
-        heading(a, UiText.tr(a, "GPU & Shader Flags", "Pengaturan GPU & Shader"));
-        envChoiceCard(a, UiText.tr(a, "Render Pass Batch", "Batch Render Pass"), "DM_VK_MID_DRAWS", "64", new String[][]{
-            {"64", UiText.tr(a, "Standard (64)", "Standar (64)"),
-                    UiText.tr(a, "Default split after 64 draws",
-                            "Pecah render pass standar tiap 64 draw")},
-            {"256", UiText.tr(a, "TBDR Tuned (256)", "TBDR Optimal (256)"),
-                    UiText.tr(a, "Reduces tile memory reloads on Adreno/Mali GPUs",
-                            "Kurangi reload tile GMEM di GPU mobile")},
-            {"512", UiText.tr(a, "Max Batch (512)", "Batch Maksimal (512)"),
-                    UiText.tr(a, "Minimum pass splits for peak throughput",
-                            "Minimalisir pemecahan render pass untuk FPS maksimal")}
-        });
+        heading(a, UiText.tr(a, "Compatibility", "Kompatibilitas"));
         envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
-                UiText.tr(a, "Speeds up 16-bit fragment math on Mali & Adreno; turn off if artifacts appear",
-                        "Percepat hitung fragment 16-bit di Mali & Adreno; matikan jika ada glitch"));
-        envToggleCard(a, UiText.tr(a, "Threaded Vulkan Recorder", "Perekam Vulkan Multi-Thread"), "DM_VK_RECORDER", false,
-                UiText.tr(a, "Offloads vkCmd recording to a dedicated worker thread",
-                        "Jalankan perekaman perintah Vulkan di thread terpisah"));
-        envToggleCard(a, UiText.tr(a, "TBDR Clear LoadOp", "TBDR Clear LoadOp"), "DM_VK_CLEAR_LOADOP", true,
-                UiText.tr(a, "Fast tile clear; recommended for both Adreno and Mali",
-                        "Clear tile cepat untuk GPU mobile (Adreno & Mali)"));
-        envToggleCard(a, UiText.tr(a, "Descriptor Set Reuse", "Gunakan Ulang Descriptor"), "DM_VK_SET_REUSE", true,
-                UiText.tr(a, "Reduces per-frame Vulkan CPU allocation overhead",
-                        "Kurangi beban CPU alokasi descriptor Vulkan tiap frame"));
-        envToggleCard(a, UiText.tr(a, "Async Shader Compile", "Kompilasi Shader Latar"), "DM_VK_ASYNC_PIPE", true,
-                UiText.tr(a, "Compiles new shaders in background to prevent freezes",
-                        "Bangun shader baru di latar belakang agar tidak patah-patah"));
-        envToggleCard(a, UiText.tr(a, "Display Timing Sync", "Sinkronisasi Timing Layar"), "DM_VK_PRESENT_TIMING", true,
-                UiText.tr(a, "Turn off if frame pacing stutters on your ROM or driver",
-                        "Matikan jika terasa tersendat pada driver/ROM HP tertentu"));
-        envToggleCard(a, UiText.tr(a, "Precise SPIR-V Float", "Presisi Float SPIR-V"), "DM_SPV_PRECISE", true,
-                UiText.tr(a, "Keep enabled to avoid screen and depth glitches on Mali & mobile GPUs",
-                        "Biarkan aktif untuk mencegah glitch layar dan shader di GPU HP"));
-    }
-
-    private static void cpuPinCard(Activity a) {
-        String cur = GameSettings.get(a, "DM_VK_PIN", "");
-        String[][] opts = new String[][]{
-            {"", UiText.tr(a, "OS Auto Scheduler", "Otomatis (OS Scheduler)"),
-                    UiText.tr(a, "Default: let Android decide CPU core placement",
-                            "Standar: biarkan sistem Android mengatur penempatan core")},
-            {"c0", UiText.tr(a, "2+6 Big.LITTLE (0xC0 / 0x3F)", "2+6 Big.LITTLE (0xC0 / 0x3F)"),
-                    UiText.tr(a, "For 2-big + 6-little SoCs (MediaTek Helio / mid-tier 8-core)",
-                            "Untuk chipset 2 core besar + 6 core kecil (cpu6-7 untuk render)")},
-            {"f0", UiText.tr(a, "4+4 Big.LITTLE (0xF0 / 0x0F)", "4+4 Big.LITTLE (0xF0 / 0x0F)"),
-                    UiText.tr(a, "For 4-big + 4-little SoCs (Snapdragon / Exynos 4+4)",
-                            "Untuk chipset 4 core besar + 4 core kecil (cpu4-7 untuk render)")},
-            {"80", UiText.tr(a, "1+3+4 Prime Core (0x80 / 0x7F)", "1+3+4 Prime Core (0x80 / 0x7F)"),
-                    UiText.tr(a, "For tri-cluster SoCs with 1 prime core (Snapdragon 7+/8, Dimensity 8/9)",
-                            "Untuk chipset flagship 1 prime core (cpu7 untuk render)")}
-        };
-        LinearLayout c = card(a);
-        titleRow(a, c, UiText.tr(a, "CPU Thread Placement", "Penempatan Thread CPU"),
-                restartNeeded.contains("DM_VK_PIN") ? UiText.tr(a, "Applies next start", "Aktif saat restart") : null);
-        for (int i = 0; i < opts.length; i++) {
-            final String val = opts[i][0];
-            boolean sel = cur.equalsIgnoreCase(val);
-            LinearLayout row = new LinearLayout(a);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(a, 10), dp(a, 9), dp(a, 10), dp(a, 9));
-            GradientDrawable bg = new GradientDrawable();
-            bg.setColor(sel ? 0x26F5C428 : CHIP);
-            bg.setCornerRadius(dp(a, 10));
-            if (sel) bg.setStroke(dp(a, 1), ACCENT);
-            row.setBackground(bg);
-            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
-            rlp.topMargin = dp(a, i == 0 ? 8 : 6);
-            row.setLayoutParams(rlp);
-
-            LinearLayout col = new LinearLayout(a);
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
-            col.addView(text(a, opts[i][1], 13, sel ? ACCENT : TEXT, true));
-            TextView sub = text(a, opts[i][2], 11, SUB, false);
-            sub.setPadding(0, dp(a, 1), 0, 0);
-            col.addView(sub);
-            row.addView(col);
-            if (sel) row.addView(text(a, "\u2713", 15, ACCENT, true));
-            row.setOnClickListener(v -> {
-                if (!cur.equalsIgnoreCase(val)) {
-                    GameSettings.setCpuPin(a, val);
-                    restartNeeded.add("DM_VK_PIN");
-                    redraw();
-                }
-            });
-            c.addView(row);
-        }
+                UiText.tr(a, "Speeds up fragment math on Mali & Adreno; turn off only if artifacts appear",
+                        "Percepat shader di Mali & Adreno; matikan hanya jika ada glitch"));
     }
 
     private static void buildSystem(Activity a) {

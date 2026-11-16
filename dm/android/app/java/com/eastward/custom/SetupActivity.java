@@ -184,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.7");
+        verTag.setText("v1.1.8");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
@@ -467,112 +467,30 @@ public final class SetupActivity extends Activity {
         drvCard.addView(drvRow, btnLp(dp));
         rightCol.addView(drvCard, cardLp(dp));
 
-        // Right Card 2: Quick Settings
+        // Right Card 2: Simplified Display & Game Settings (chipset internals are auto-configured)
         LinearLayout cfgCard = card(dp);
-        cardTitle(cfgCard, UiText.tr(this, "ENGINE & CHIPSET SETTINGS",
-                "PENGATURAN ENGINE & CHIPSET"), dp);
+        cardTitle(cfgCard, UiText.tr(this, "DISPLAY & GAME SETTINGS",
+                "PENGATURAN TAMPILAN & GAME"), dp);
 
-        // Universal Auto-Tune + preset bar across Snapdragon / MediaTek / Exynos
-        TextView btnAutoTune = actionBtn(UiText.tr(this, "Auto-Tune This Device",
-                "Sesuaikan Otomatis HP Ini"), C_ACCENT, C_INK, dp, true);
-        btnAutoTune.setOnClickListener(v -> {
-            String summary = GameSettings.autoTuneDevice(this);
-            toast(UiText.tr(this, "Auto-tuned: ", "Disesuaikan otomatis: ") + summary);
-            buildUi();
-            refreshUi();
-        });
-        cfgCard.addView(btnAutoTune, btnLp(dp));
-
-        LinearLayout profRow = new LinearLayout(this);
-        profRow.setOrientation(LinearLayout.HORIZONTAL);
-        String[] profKeys = {"performance", "balanced", "quality"};
-        String[] profLabels = {
-            UiText.tr(this, "Performance", "Performa"),
-            UiText.tr(this, "Balanced", "Seimbang"),
-            UiText.tr(this, "Quality 1080p", "Kualitas 1080p")
-        };
-        for (int i = 0; i < profKeys.length; i++) {
-            final String pk = profKeys[i];
-            TextView pb = actionBtn(profLabels[i], C_CHIP, C_TEXT, dp, false);
-            pb.setTextSize(12);
-            pb.setOnClickListener(v -> {
-                GameSettings.applyProfile(this, pk);
-                toast(UiText.tr(this, "Profile applied: ", "Profil diterapkan: ") + pb.getText());
-                buildUi();
-                refreshUi();
-            });
-            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            if (i > 0) plp.leftMargin = (int) (6 * dp);
-            profRow.addView(pb, plp);
-        }
-        cfgCard.addView(profRow, btnLp(dp));
+        TextView autoInfo = infoLine(cfgCard,
+                UiText.tr(this, "Auto-Chipset Active: ", "Auto-Chipset Aktif: ") + GameSettings.detectedChipsetSummary(this), dp);
+        autoInfo.setTextColor(C_ACCENT);
 
         addChoiceRow(cfgCard, UiText.tr(this, "Resolution", "Resolusi"), "DM_OPMODE", "0",
                 new String[]{UiText.tr(this, "720p Handheld", "720p Ringan"),
                         UiText.tr(this, "1080p Docked", "1080p Tajam")},
                 new String[]{"0", "1"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "Render Scale", "Skala Render GPU"), "DM_VK_FB_SCALE", "100",
+        addChoiceRow(cfgCard, UiText.tr(this, "Pixel Quality (Render Scale)", "Kualitas Piksel (Skala Render)"), "DM_VK_FB_SCALE", "100",
                 new String[]{"100% Native", "80% Crisp", "75% (540p)", "67% (480p)"},
                 new String[]{"100", "80", "75", "67"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "",
-                new String[]{UiText.tr(this, "60 Hz Sync", "60 Hz Normal"),
-                        UiText.tr(this, "Uncapped", "Tanpa Batas")},
-                new String[]{"", "0"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Game Language", "Bahasa Game"), "DM_LANG", "en-US",
                 new String[]{"English", "Japanese", "Chinese"}, new String[]{"en-US", "ja", "zh-Hans"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "CPU Core Topology", "Topologi Core CPU"), "DM_VK_PIN", "",
-                new String[]{UiText.tr(this, "Auto", "Otomatis"), "2+6 (c0)", "4+4 (f0)", "1+3+4 (80)"},
-                new String[]{"", "c0", "f0", "80"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "CPU Boost (UClamp)", "Boost CPU (UClamp)"), "DM_VK_UCLAMP_MIN", "0",
-                new String[]{UiText.tr(this, "Off", "Mati"), "512", "800", "1024"},
-                new String[]{"0", "512", "800", "1024"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "Adreno GPU Clock Boost", "Boost Clock GPU Adreno"), "DM_VK_GPU_FLOOR", "0",
-                new String[]{UiText.tr(this, "Off", "Mati"), "85%", "Max (100%)"},
-                new String[]{"0", "85", "100"}, dp);
-        addChoiceRow(cfgCard, UiText.tr(this, "Render Pass Batch", "Batch Render Pass"), "DM_VK_MID_DRAWS", "64",
-                new String[]{"64 (Std)", "256 (TBDR)", "512 (Max)"},
-                new String[]{"64", "256", "512"}, dp);
-
-        TextView vkSec = infoLine(cfgCard, UiText.tr(this, "Vulkan & Graphics Toggles", "Pengaturan Toggle Vulkan & Grafis"), dp);
-        vkSec.setTextColor(C_TEXT);
-        vkSec.setTypeface(Typeface.DEFAULT_BOLD);
-        vkSec.setPadding(0, (int) (10 * dp), 0, (int) (2 * dp));
 
         LinearLayout togPanel = panel(dp);
         addToggleRow(togPanel,
-                UiText.tr(this, "FP16 Shader Fast Math", "Optimasi Shader FP16"),
-                UiText.tr(this, "Faster 16-bit fragment math on Mali & Adreno GPUs", "Percepat hitung shader fragment 16-bit di Mali & Adreno"),
+                UiText.tr(this, "FP16 Shader Optimization", "Optimasi Shader FP16"),
+                UiText.tr(this, "Turn off only if visual glitches appear on your device", "Biarkan aktif; matikan hanya jika muncul glitch di HP tertentu"),
                 "DM_VK_MALI_FP16", true, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "Threaded Vulkan Recorder", "Perekam Vulkan Multi-Thread"),
-                UiText.tr(this, "Offload vkCmd calls to worker thread on 4+ core CPUs", "Pisahkan perekaman perintah Vulkan ke thread terpisah"),
-                "DM_VK_RECORDER", false, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "TBDR Clear LoadOp", "Tile Clear Cepat (TBDR)"),
-                UiText.tr(this, "Skip full-frame clear stores on mobile tile GPUs", "Hemat bandwidth tile GPU HP saat clear layar"),
-                "DM_VK_CLEAR_LOADOP", true, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "Descriptor Reuse", "Gunakan Ulang Descriptor"),
-                UiText.tr(this, "Cut CPU draw-call overhead each frame", "Kurangi beban CPU tiap frame render"),
-                "DM_VK_SET_REUSE", true, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "Async Shader Compile", "Kompilasi Shader Latar"),
-                UiText.tr(this, "Avoid micro-stutters when new shaders appear", "Kurangi patah-patah saat shader baru dimuat"),
-                "DM_VK_ASYNC_PIPE", true, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "Display Timing Sync", "Sinkronisasi Timing Layar"),
-                UiText.tr(this, "Smooth frame pacing on Google/Mali/Snapdragon", "Haluskan frame pacing di layar HP"),
-                "DM_VK_PRESENT_TIMING", true, dp);
-        togPanel.addView(divider(dp));
-        addToggleRow(togPanel,
-                UiText.tr(this, "Precise SPIR-V Float", "Presisi Float SPIR-V"),
-                UiText.tr(this, "Prevent screen/depth glitches on Mali & mobile GPUs", "Cegah glitch layar & kedalaman di GPU Mali/HP"),
-                "DM_SPV_PRECISE", true, dp);
         togPanel.addView(divider(dp));
         addToggleRow(togPanel,
                 UiText.tr(this, "Show FPS Counter", "Tampilkan Counter FPS"),
@@ -580,10 +498,12 @@ public final class SetupActivity extends Activity {
                 "DM_SHOW_FPS", false, dp);
         cfgCard.addView(togPanel, btnLp(dp));
 
-        TextView btnResetEnv = actionBtn(UiText.tr(this, "Reset Engine Defaults", "Reset ke Pengaturan Awal"), C_CHIP, C_SUB, dp, false);
+        TextView btnResetEnv = actionBtn(UiText.tr(this, "Reset Defaults (Auto-Chipset)", "Reset Default (Auto-Chipset)"), C_CHIP, C_SUB, dp, false);
         btnResetEnv.setOnClickListener(v -> {
             GameSettings.resetDefaults(this);
-            recreate();
+            toast(UiText.tr(this, "Restored crisp 100% + auto chipset settings.", "Kembali ke pengaturan 100% tajam + auto chipset."));
+            buildUi();
+            refreshUi();
         });
         cfgCard.addView(btnResetEnv, btnLp(dp));
         rightCol.addView(cfgCard, cardLp(dp));
