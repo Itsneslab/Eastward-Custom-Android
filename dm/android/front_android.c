@@ -826,7 +826,7 @@ static void on_cmd(struct android_app *app, int32_t cmd) {
             // a window that comes back (Home and back to the game) has a new swapchain with nothing in it: the newest frame is shown again, which a game held by the
             // pause menu would not do itself (the picture behind the menu stayed black until Resume)
             if (app->window) { if (g_started) { vk_window_up(app->window); g_shown = 0; } else vk_window_first(app->window); }
-            if (!g_started) { g_started = 1; start_host(); gamepad_start(); }
+            if (!g_started) { g_started = 1; gamepad_start(); start_host(); }
             break;
         case APP_CMD_TERM_WINDOW: vk_window_down(); break;
         case APP_CMD_GAINED_FOCUS: if (game) dm_focus_set(1); break;

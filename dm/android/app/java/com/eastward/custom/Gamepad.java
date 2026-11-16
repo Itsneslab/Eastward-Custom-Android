@@ -225,6 +225,7 @@ public final class Gamepad extends View {
 
         preset = prefs.getInt("preset", PRESET_RPG);
         if (preset < 0 || preset > PRESET_TAP) preset = PRESET_RPG;
+        if (preset == PRESET_TAP && !prefs.getBoolean("tap_confirmed", false)) preset = PRESET_RPG;
         autoHideOnPad = prefs.getBoolean("auto_hide_pad", false);
         opacityPct = prefs.getInt("opacity", 75);
         globalScale = prefs.getFloat("scale", 1.0f);
@@ -440,7 +441,7 @@ public final class Gamepad extends View {
     void setPreset(int p) {
         resetTouches();
         preset = Math.max(0, Math.min(PRESET_TAP, p));
-        prefs.edit().putInt("preset", preset).apply();
+        prefs.edit().putInt("preset", preset).putBoolean("tap_confirmed", preset == PRESET_TAP).apply();
         loadSlotOverrides();
         wakeControls();
     }
@@ -712,13 +713,13 @@ public final class Gamepad extends View {
                     else if (i == 3) {
                         editMode = false;
                         editSel = -1;
-                        if (preset == PRESET_TAP) preset = PRESET_RPG;
+                        saveSlotOverrides();
+                        if (preset == PRESET_TAP) setPreset(PRESET_RPG);
                         if (padOff || autoHideOnPad) {
                             autoHideOnPad = false;
-                            prefs.edit().putBoolean("auto_hide_pad", false).apply();
                             padOff = false;
+                            prefs.edit().putBoolean("auto_hide_pad", false).apply();
                         }
-                        saveSlotOverrides();
                         nativePause(false);
                         wakeControls();
                     }

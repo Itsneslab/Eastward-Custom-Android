@@ -281,11 +281,8 @@ def main():
             'DM_LANG=en-US',
             'DM_OPMODE=0',
             'DM_VK_CLEAR_LOADOP=1',
-            'DM_VK_MALI_FP16=1',
             'DM_VK_SET_REUSE=1',
             'DM_SPV_PRECISE=1',
-            'DM_VK_PIN=c0',
-            'DM_VK_PIN_DONE=3f',
             f'DM_GLSLC_CAPTURE={user_glslc}',
         ]) + '\n')
 

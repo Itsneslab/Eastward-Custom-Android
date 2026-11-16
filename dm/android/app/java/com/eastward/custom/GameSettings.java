@@ -111,7 +111,8 @@ public final class GameSettings {
         map.put("DM_OPMODE", "0");
         map.put("DM_PRESENT_HZ", "");
         map.put("DM_VK_CLEAR_LOADOP", "1");
-        map.put("DM_VK_MALI_FP16", isAdrenoGpu(c) ? "0" : "1");
+        Boolean mali = detectMaliGpu(c);
+        if (mali != null) map.put("DM_VK_MALI_FP16", mali ? "1" : "0");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
         map.put("DM_VK_PREWARM", "3000");
@@ -162,10 +163,12 @@ public final class GameSettings {
      */
     public static String autoTuneDevice(Context c) {
         Map<String, String> map = loadEnv(c);
-        boolean adreno = isAdrenoGpu(c);
+        Boolean mali = detectMaliGpu(c);
+        boolean adreno = (mali != null && !mali);
         map.put("DM_OPMODE", "0");
         map.put("DM_PRESENT_HZ", "");
-        map.put("DM_VK_MALI_FP16", adreno ? "0" : "1");
+        if (mali != null) map.put("DM_VK_MALI_FP16", mali ? "1" : "0");
+        else map.remove("DM_VK_MALI_FP16");
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
@@ -187,18 +190,36 @@ public final class GameSettings {
         map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
         saveEnv(c, map);
 
-        String gpuTag = adreno ? "Adreno" : "Mali/Vulkan";
+        String gpuTag = (mali == null) ? "Vulkan Auto" : (adreno ? "Adreno" : "Mali");
         String cpuTag = (bigMask != 0)
                 ? ("0x" + Integer.toHexString(bigMask) + "/0x" + Integer.toHexString(littleMask))
                 : "Auto";
         return gpuTag + " • CPU " + cpuTag + " • 720p";
     }
 
-    private static boolean isAdrenoGpu(Context c) {
+    /** Returns true for Mali, false for Adreno/Qualcomm/PowerVR/Xclipse, or null to let native Vulkan auto-detect. */
+    private static Boolean detectMaliGpu(Context c) {
         Map<String, String> vk = vkInfo(c);
         String combined = ((vk.get("gpu") != null ? vk.get("gpu") : "") + " "
                 + (vk.get("driver") != null ? vk.get("driver") : "")).toLowerCase(java.util.Locale.ROOT);
-        return combined.contains("adreno") || combined.contains("turnip") || combined.contains("qualcomm");
+        if (combined.contains("adreno") || combined.contains("turnip") || combined.contains("qualcomm")
+                || combined.contains("xclipse") || combined.contains("powervr")) {
+            return Boolean.FALSE;
+        }
+        if (combined.contains("mali")) {
+            return Boolean.TRUE;
+        }
+        String hw = ((android.os.Build.HARDWARE != null ? android.os.Build.HARDWARE : "") + " "
+                + (android.os.Build.BOARD != null ? android.os.Build.BOARD : ""))
+                .toLowerCase(java.util.Locale.ROOT);
+        if (hw.contains("qcom") || hw.contains("qualcomm") || hw.contains("msm") || hw.contains("taro")
+                || hw.contains("kalama") || hw.contains("pineapple") || hw.contains("lahaina")) {
+            return Boolean.FALSE;
+        }
+        if (hw.startsWith("mt") || hw.contains("mt6") || hw.contains("mt8")) {
+            return Boolean.TRUE;
+        }
+        return null;
     }
 
     /** Read sysfs cpuinfo_max_freq to split big/prime cores from efficiency cores on any SoC. */

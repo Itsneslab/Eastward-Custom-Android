@@ -129,6 +129,7 @@ public final class LiveShaderCompiler {
         env.put("DOTNET_OPENSSL_VERSION_OVERRIDE", "3");
         env.put("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
         env.put("TMPDIR", ctx.getCacheDir().getPath());
+        env.put("HOME", filesDir.getPath());
         env.put("DM_GAME", GameSettings.TITLE_ID);
         env.put("DM_NO_FORK", "1");
 
