@@ -184,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.8");
+        verTag.setText("v1.1.9 (Eksperimen)");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
@@ -481,7 +481,7 @@ public final class SetupActivity extends Activity {
                         UiText.tr(this, "1080p Docked", "1080p Tajam")},
                 new String[]{"0", "1"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Pixel Quality (Render Scale)", "Kualitas Piksel (Skala Render)"), "DM_VK_FB_SCALE", "100",
-                new String[]{"100% Native", "80% Crisp", "75% (540p)", "67% (480p)"},
+                new String[]{"100% Asli", "80% Pixel Tajam", "75% Lancar", "67% Ngebut"},
                 new String[]{"100", "80", "75", "67"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Game Language", "Bahasa Game"), "DM_LANG", "en-US",
                 new String[]{"English", "Japanese", "Chinese"}, new String[]{"en-US", "ja", "zh-Hans"}, dp);
@@ -491,6 +491,11 @@ public final class SetupActivity extends Activity {
                 UiText.tr(this, "FP16 Shader Optimization", "Optimasi Shader FP16"),
                 UiText.tr(this, "Turn off only if visual glitches appear on your device", "Biarkan aktif; matikan hanya jika muncul glitch di HP tertentu"),
                 "DM_VK_MALI_FP16", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Unlock 30fps Swapchain (Exp)", "Bebas Lock 30fps (Eksperimen)"),
+                UiText.tr(this, "Use Mailbox/Relaxed VSync to avoid 30fps lock; turn off if flickering", "Pakai Mailbox/Relaxed agar tidak terkunci 30fps saat jalan; matikan jika berkedip"),
+                "DM_VK_MAILBOX", true, dp);
         togPanel.addView(divider(dp));
         addToggleRow(togPanel,
                 UiText.tr(this, "Show FPS Counter", "Tampilkan Counter FPS"),

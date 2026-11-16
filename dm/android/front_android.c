@@ -16,6 +16,7 @@
 #include "nvn_obj.h"
 #include <android/bitmap.h>
 #include <android/log.h>
+#include <android/looper.h>
 #include <android/window.h>   // AWINDOW_FLAG_KEEP_SCREEN_ON
 #include <android_native_app_glue.h>
 #include <jni.h>
@@ -41,6 +42,19 @@ static _Atomic uint64_t g_frames;
 static char g_ext[512], g_int[512], g_game[600], g_last[160];   // g_game: <external files>/games/<title ID>
 static pthread_mutex_t g_txt_mu = PTHREAD_MUTEX_INITIALIZER;
 static struct android_app *g_app;
+static _Atomic(ALooper *) g_looper;
+static int g_sc_mailbox;
+
+void front_android_wake(void) {
+    ALooper *lp = atomic_load_explicit(&g_looper, memory_order_acquire);
+    if (lp) ALooper_wake(lp);
+}
+
+static int mailbox_on(void) {
+    static int v = -1;
+    if (v < 0) { const char *e = getenv("DM_VK_MAILBOX"); v = !(e && *e == '0'); }
+    return v;
+}
 
 // ---------- Log: stderr → logcat and log.txt ----------
 static void *log_reader(void *p) {
@@ -391,9 +405,27 @@ static int vk_window_up(ANativeWindow *w) {
     // The picture is drawn upright in the window's orientation (the extent above) with the identity transform, and the compositor rotates it for the
     // display; the current transform (90° in landscape) would ask for a picture drawn pre-rotated
     VkSurfaceTransformFlagBitsKHR xf = cap.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : cap.currentTransform;
-    VkSwapchainCreateInfoKHR sc = {.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_surf, .minImageCount = cap.minImageCount < 3 && cap.maxImageCount >= 3 ? 3 : cap.minImageCount,
+    VkPresentModeKHR pmode = VK_PRESENT_MODE_FIFO_KHR;
+    if (mailbox_on()) {
+        uint32_t npm = 0;
+        if (vkGetPhysicalDeviceSurfacePresentModesKHR(g_pd, g_surf, &npm, NULL) == VK_SUCCESS && npm) {
+            VkPresentModeKHR pm[16]; if (npm > 16) npm = 16;
+            if (vkGetPhysicalDeviceSurfacePresentModesKHR(g_pd, g_surf, &npm, pm) == VK_SUCCESS) {
+                int has_mb = 0, has_fr = 0;
+                for (uint32_t i = 0; i < npm; i++) {
+                    if (pm[i] == VK_PRESENT_MODE_MAILBOX_KHR) has_mb = 1;
+                    else if (pm[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR) has_fr = 1;
+                }
+                if (has_mb) pmode = VK_PRESENT_MODE_MAILBOX_KHR;
+                else if (has_fr) pmode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+            }
+        }
+    }
+    g_sc_mailbox = (pmode == VK_PRESENT_MODE_MAILBOX_KHR || pmode == VK_PRESENT_MODE_FIFO_RELAXED_KHR);
+    uint32_t img_cnt = (cap.minImageCount < 3 && (cap.maxImageCount == 0 || cap.maxImageCount >= 3)) ? 3 : cap.minImageCount;
+    VkSwapchainCreateInfoKHR sc = {.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_surf, .minImageCount = img_cnt,
         .imageFormat = g_fmt, .imageColorSpace = cs, .imageExtent = g_ext2, .imageArrayLayers = 1, .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = xf, .compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR, .presentMode = VK_PRESENT_MODE_FIFO_KHR, .clipped = 1};
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = xf, .compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR, .presentMode = pmode, .clipped = 1};
     if (!(cap.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)) sc.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (vk_driver_fail("swapchain")) { snprintf(g_vk_why, sizeof g_vk_why, "DM_VK_DRIVER_FAIL=swapchain"); return 0; }   // a test, with the surface made: its teardown is tried too
     VKC(vkCreateSwapchainKHR(g_dev, &sc, NULL, &g_sc));
@@ -407,7 +439,8 @@ static int vk_window_up(ANativeWindow *w) {
     uint32_t mt = 0; for (; mt < mp.memoryTypeCount; mt++) if ((mr.memoryTypeBits >> mt & 1) && (mp.memoryTypes[mt].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) == (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) break;
     VkMemoryAllocateInfo ma = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = mr.size, .memoryTypeIndex = mt};
     VKC(vkAllocateMemory(g_dev, &ma, NULL, &g_stgm)); VKC(vkBindBufferMemory(g_dev, g_stg, g_stgm, 0)); VKC(vkMapMemory(g_dev, g_stgm, 0, g_stg_sz, 0, &g_stgp));
-    LOG("window %ux%u, swapchain %u images, format %d", g_ext2.width, g_ext2.height, g_nimg, g_fmt);
+    LOG("window %ux%u, swapchain %u images, format %d, present %s", g_ext2.width, g_ext2.height, g_nimg, g_fmt,
+        sc.presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "MAILBOX" : sc.presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "FIFO_RELAXED" : "FIFO");
     return 1;
 }
 static void vk_front_down(void) {   // everything vk_init and vk_window_up made, so the device can be made again (vk_window_first)
@@ -587,14 +620,16 @@ static int frame_draw(void) {
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = g_img[idx], .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
     vkCmdPipelineBarrier(g_cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &b);
-    VkClearColorValue black = {{0, 0, 0, 1}}; VkImageSubresourceRange all = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdClearColorImage(g_cb, g_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &all);
-    VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT};
-    vkCmdPipelineBarrier(g_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
     // the crop rectangle into the window, scaled to fit with its aspect kept
     int cw = fr.crop[2] > 0 ? fr.crop[2] : (int)fr.w, ch = fr.crop[3] > 0 ? fr.crop[3] : (int)fr.h;
     double sx = (double)g_ext2.width / cw, sy = (double)g_ext2.height / ch, sc = sx < sy ? sx : sy;
     int dw = (int)(cw * sc), dh = (int)(ch * sc), dx = ((int)g_ext2.width - dw) / 2, dy = ((int)g_ext2.height - dh) / 2;
+    if (dx > 0 || dy > 0 || dw < (int)g_ext2.width || dh < (int)g_ext2.height) {
+        VkClearColorValue black = {{0, 0, 0, 1}}; VkImageSubresourceRange all = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdClearColorImage(g_cb, g_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &all);
+        VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT};
+        vkCmdPipelineBarrier(g_cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+    }
     VkImageBlit bl = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{fr.crop[0], fr.crop[1], 0}, {fr.crop[0] + cw, fr.crop[1] + ch, 1}},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{dx, dy, 0}, {dx + dw, dy + dh, 1}}};
     if (fr.flip) { bl.srcOffsets[0].y = fr.crop[1] + ch; bl.srcOffsets[1].y = fr.crop[1]; }   // the window image is stored bottom-up (NVN's lower-left origin)
@@ -608,7 +643,7 @@ static int frame_draw(void) {
     vs_read(); VkPresentTimeGOOGLE pt = {g_vs_id++, vs_show_at(fr.show_at)};
     VkPresentTimesInfoGOOGLE pti = {.sType = VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE, .swapchainCount = 1, .pTimes = &pt};
     pthread_mutex_lock(&vkb()->qmu); vkQueueSubmit(g_q, 1, &si, g_fence);
-    VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = vkb()->has_display_timing ? &pti : NULL, .waitSemaphoreCount = 1, .pWaitSemaphores = &g_done, .swapchainCount = 1,
+    VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .pNext = (!g_sc_mailbox && vkb()->has_display_timing) ? &pti : NULL, .waitSemaphoreCount = 1, .pWaitSemaphores = &g_done, .swapchainCount = 1,
                            .pSwapchains = &g_sc, .pImageIndices = &idx};
     vkQueuePresentKHR(g_q, &pi); pthread_mutex_unlock(&vkb()->qmu);
     vkWaitForFences(g_dev, 1, &g_fence, 1, UINT64_MAX);   // the texture is held until the GPU has read it
@@ -839,6 +874,7 @@ static void on_cmd(struct android_app *app, int32_t cmd) {
 
 void android_main(struct android_app *app) {
     g_app = app;
+    atomic_store_explicit(&g_looper, app->looper, memory_order_release);
     snprintf(g_ext, sizeof g_ext, "%s", app->activity->externalDataPath ? app->activity->externalDataPath : app->activity->internalDataPath);
     snprintf(g_int, sizeof g_int, "%s", app->activity->internalDataPath);
     snprintf(g_game, sizeof g_game, "%s/games/%s", g_ext, DM_GAME_ID);

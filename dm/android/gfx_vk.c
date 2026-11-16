@@ -1431,7 +1431,8 @@ static VkFormat srgb_twin(VkFormat f) {
 }
 // DM_VK_UBWC=0 (env.txt): colour images MUTABLE_FORMAT with no format list, as before (vt_create)
 static int ubwc_on(void) { static int v = -1; if (v < 0) { const char *e = getenv("DM_VK_UBWC"); v = !(e && *e == '0') && g_fmt_list; LOG("[vk] colour images %s", v ? "list their format and its sRGB twin, so Adreno keeps their framebuffer compression (DM_VK_UBWC=0: MUTABLE_FORMAT, any format of the texel size)" : g_fmt_list ? "MUTABLE_FORMAT with no format list (DM_VK_UBWC=0)" : "MUTABLE_FORMAT with no format list (no VK_KHR_image_format_list)"); } return v; }
-// DM_VK_FB_SCALE=<50-100> (env.txt): internal render-target resolution percentage for GPU-only 2D targets >= 640x360 (100: native)
+// DM_VK_FB_SCALE=<50-100> (env.txt): internal render-target resolution percentage (100: native).
+// With DM_VK_HD_ONLY=1 (default), 640x360 pixel-art targets stay 100% crisp and only >=1280x720 post-fx/screen targets scale.
 static int fb_scale_pct(void) {
     static int v = -1;
     if (v < 0) {
@@ -1440,6 +1441,11 @@ static int fb_scale_pct(void) {
         v = (n >= 50 && n < 100) ? n : 100;
         if (v < 100) LOG("[vk] render target scale: %d%% (DM_VK_FB_SCALE)", v);
     }
+    return v;
+}
+static int hd_only_on(void) {
+    static int v = -1;
+    if (v < 0) { const char *e = getenv("DM_VK_HD_ONLY"); v = !(e && *e == '0'); }
     return v;
 }
 static vtex *vt_create_scaled(const tex_t *t, int allow_scale) {
@@ -1480,9 +1486,10 @@ static vtex *vt_create_scaled(const tex_t *t, int allow_scale) {
     if (ff & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) u |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     if ((t->d.flags & NVN_TEXTURE_FLAGS_IMAGE) && (ff & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) u |= VK_IMAGE_USAGE_STORAGE_BIT;
     v->usage = u;   // STORAGE added later if the texture is bound to an image slot all the same (vt_storage_up)
+    uint32_t min_w = hd_only_on() ? 1280u : 640u, min_h = hd_only_on() ? 720u : 360u;
     if (allow_scale && v->type == VK_IMAGE_TYPE_2D && !conv && v->levels == 1 && v->layers == 1 && v->d == 1 && v->samples == VK_SAMPLE_COUNT_1_BIT
         && !(u & VK_IMAGE_USAGE_STORAGE_BIT) && (u & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
-        && v->vw >= 640 && v->vh >= 360) {
+        && v->vw >= min_w && v->vh >= min_h) {
         int pct = fb_scale_pct();
         if (pct < 100) {
             uint32_t sw = ((v->vw * (uint32_t)pct + 50u) / 100u + 1u) & ~1u;
@@ -2686,6 +2693,7 @@ uint64_t mtl_present(const tex_t *t, double period_s, const int crop[4]) {
         }
         g_frame.show_at = vs_show_time(period_s > 0 ? (uint64_t)(period_s * 1e9) : 0);
         pthread_mutex_unlock(&g_frame_mu);
+        void front_android_wake(void); front_android_wake();
     }
     pthread_mutex_unlock(&g_bk);
     g_pace_per = period_s > 0 ? (uint64_t)(period_s * 1e9) : 16666667ull; g_pace_due = 1;

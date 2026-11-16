@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1.8", 11, ACCENT, true));
+        brandCol.addView(text(a, "v1.1.9 (Eksperimen)", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -458,19 +458,22 @@ public final class GameMenu {
         envChoiceCard(a, UiText.tr(a, "Pixel Quality (Render Scale)", "Kualitas Piksel (Skala Render)"), "DM_VK_FB_SCALE", "100", new String[][]{
             {"100", UiText.tr(a, "100% Native (Crisp)", "100% Asli (Tajam)"),
                     UiText.tr(a, "Full native pixel-art sharpness (default)",
-                            "Ketajaman pixel-art penuh tanpa blur (bawaan)")},
-            {"80", UiText.tr(a, "80% Balanced (-36% GPU load)", "80% Seimbang (-36% beban GPU)"),
-                    UiText.tr(a, "Moderate GPU savings with slight softening",
-                            "Hemat beban GPU dengan sedikit penurunan ketajaman")},
-            {"75", UiText.tr(a, "75% Smooth 540p (-44% GPU load)", "75% Lancar 540p (-44% beban GPU)"),
-                    UiText.tr(a, "Higher FPS on entry GPUs at softer image quality",
-                            "FPS lebih tinggi di GPU kelas menengah, gambar lebih lembut")},
-            {"67", UiText.tr(a, "67% Fast 480p (-55% GPU load)", "67% Ngebut 480p (-55% beban GPU)"),
+                            "Ketajaman pixel-art penuh tanpa turun resolusi (bawaan)")},
+            {"80", UiText.tr(a, "80% Crisp Pixel-Art (Exp)", "80% Pixel Tajam (Eksperimen)"),
+                    UiText.tr(a, "Keeps 640x360 world pixels 100% sharp; eases 720p post-FX (-36% GPU load)",
+                            "Pixel-art dunia 640x360 tetap 100% tajam; hanya efek 720p diringankan (-36% GPU)")},
+            {"75", UiText.tr(a, "75% Smooth Pixel-Art", "75% Lancar (Pixel Tajam)"),
+                    UiText.tr(a, "Keeps 640x360 world pixels sharp; 540p post-FX for Helio G80/G88/G99 & Adreno 610",
+                            "Pixel-art 640x360 tetap tajam; sangat membantu Helio G80/G88/G99 & Adreno 610")},
+            {"67", UiText.tr(a, "67% Fast Post-FX", "67% Ngebut"),
                     UiText.tr(a, "Maximum GPU headroom on heavy outdoor areas",
                             "Ringankan beban GPU maksimal di area berat")}
         });
 
-        heading(a, UiText.tr(a, "Compatibility", "Kompatibilitas"));
+        heading(a, UiText.tr(a, "Experimental & Compatibility", "Eksperimen & Kompatibilitas"));
+        envToggleCard(a, UiText.tr(a, "Unlock 30fps Swapchain (Exp)", "Bebas Lock 30fps (Eksperimen)"), "DM_VK_MAILBOX", true,
+                UiText.tr(a, "Uses Mailbox/Relaxed VSync to avoid 30fps locks while walking; turn off if tearing",
+                        "Pakai Mailbox/Relaxed agar tidak terkunci 30fps saat berjalan; matikan jika berkedip"));
         envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
                 UiText.tr(a, "Speeds up fragment math on Mali & Adreno; turn off only if artifacts appear",
                         "Percepat shader di Mali & Adreno; matikan hanya jika ada glitch"));

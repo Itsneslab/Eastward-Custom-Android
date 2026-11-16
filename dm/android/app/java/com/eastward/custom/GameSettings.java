@@ -109,27 +109,12 @@ public final class GameSettings {
         map.put("UI_LANG", uiLang);
         map.put("DM_LANG", "en-US");
         map.put("DM_OPMODE", "0");
-        map.put("DM_PRESENT_HZ", "");
-        map.put("DM_VK_CLEAR_LOADOP", "1");
-        Boolean mali = detectMaliGpu(c);
-        boolean adreno = (mali != null && !mali);
         map.put("DM_VK_MALI_FP16", "1");
-        map.put("DM_VK_SET_REUSE", "1");
-        map.put("DM_VK_ASYNC_PIPE", "1");
-        map.put("DM_VK_PREWARM", "3000");
-        map.put("DM_VK_PRESENT_TIMING", "1");
-        map.put("DM_VK_MID_DRAWS", "256");
-        map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
-        if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
-        map.put("DM_SPV_PRECISE", "1");
-        int[] masks = detectCpuClusterMasks();
-        if (masks[0] != 0 && masks[1] != 0) {
-            map.put("DM_VK_PIN", Integer.toHexString(masks[0]));
-            map.put("DM_VK_PIN_DONE", Integer.toHexString(masks[1]));
-        }
-        map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
+        map.put("DM_VK_MAILBOX", "1");
         map.put("DM_VK_FB_SCALE", "100");
-        map.put("DM_AUTOTUNED", "5");
+        applyDetectedEngineDefaults(c, map);
+        syncModOverlayMap(c, map);
+        map.put("DM_AUTOTUNED", "6");
         saveEnv(c, map);
     }
 
@@ -137,16 +122,33 @@ public final class GameSettings {
     public static void ensureAutoTuned(Context c) {
         Map<String, String> map = loadEnv(c);
         String ver = map.get("DM_AUTOTUNED");
-        if (!"1".equals(ver) && !"2".equals(ver) && !"3".equals(ver) && !"4".equals(ver) && !"5".equals(ver)) {
+        boolean changed = syncModOverlayMap(c, map);
+        if (!"1".equals(ver) && !"2".equals(ver) && !"3".equals(ver) && !"4".equals(ver) && !"5".equals(ver) && !"6".equals(ver)) {
             autoTuneDevice(c);
-        } else if (!"5".equals(ver)) {
-            // Apply chipset-detected internal defaults on upgrade while keeping user's resolution/scale/FP16/FPS choices.
+            return;
+        } else if (!"6".equals(ver)) {
+            // Upgrade to v1.1.9-exp: apply experimental low-latency present, recorder-off, and eviction tuning while keeping user display choices.
             applyDetectedEngineDefaults(c, map);
             if ("3".equals(ver) || !map.containsKey("DM_VK_FB_SCALE")) map.put("DM_VK_FB_SCALE", "100");
             if (!map.containsKey("DM_VK_MALI_FP16")) map.put("DM_VK_MALI_FP16", "1");
-            map.put("DM_AUTOTUNED", "5");
-            saveEnv(c, map);
+            if (!map.containsKey("DM_VK_MAILBOX")) map.put("DM_VK_MAILBOX", "1");
+            map.put("DM_AUTOTUNED", "6");
+            changed = true;
         }
+        if (changed) saveEnv(c, map);
+    }
+
+    private static boolean syncModOverlayMap(Context c, Map<String, String> map) {
+        File modRomfs = new File(gameDir(c), "mods/romfs");
+        String target = modRomfs.getPath();
+        String cur = map.get("DM_ROMFS_OVERLAY");
+        if (modRomfs.isDirectory()) {
+            if (!target.equals(cur)) { map.put("DM_ROMFS_OVERLAY", target); return true; }
+        } else if (target.equals(cur)) {
+            map.remove("DM_ROMFS_OVERLAY");
+            return true;
+        }
+        return false;
     }
 
     private static void applyDetectedEngineDefaults(Context c, Map<String, String> map) {
@@ -159,7 +161,9 @@ public final class GameSettings {
         map.put("DM_VK_PREWARM", "1500");
         map.put("DM_VK_PRESENT_TIMING", "1");
         map.put("DM_VK_MID_DRAWS", "256");
-        map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
+        map.put("DM_VK_RECORDER", "0");
+        map.put("DM_VK_HD_ONLY", "1");
+        map.put("DM_VK_IMAGE_EVICT_AGE", "3600");
         if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         else map.remove("DM_VK_GPU_FLOOR");
         map.put("DM_SPV_PRECISE", "1");
@@ -183,8 +187,10 @@ public final class GameSettings {
         map.put("DM_OPMODE", "0");
         map.put("DM_VK_FB_SCALE", "100");
         map.put("DM_VK_MALI_FP16", "1");
+        map.put("DM_VK_MAILBOX", "1");
         applyDetectedEngineDefaults(c, map);
-        map.put("DM_AUTOTUNED", "5");
+        syncModOverlayMap(c, map);
+        map.put("DM_AUTOTUNED", "6");
         saveEnv(c, map);
         return detectedChipsetSummary(c);
     }
