@@ -128,8 +128,8 @@ public final class GameSettings {
             map.put("DM_VK_PIN_DONE", Integer.toHexString(masks[1]));
         }
         map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
-        map.put("DM_VK_FB_SCALE", isEntryMidGpu(c) ? "75" : "100");
-        map.put("DM_AUTOTUNED", "3");
+        map.put("DM_VK_FB_SCALE", "100");
+        map.put("DM_AUTOTUNED", "4");
         saveEnv(c, map);
     }
 
@@ -137,10 +137,10 @@ public final class GameSettings {
     public static void ensureAutoTuned(Context c) {
         Map<String, String> map = loadEnv(c);
         String ver = map.get("DM_AUTOTUNED");
-        if (!"1".equals(ver) && !"2".equals(ver) && !"3".equals(ver)) {
+        if (!"1".equals(ver) && !"2".equals(ver) && !"3".equals(ver) && !"4".equals(ver)) {
             autoTuneDevice(c);
-        } else if ("1".equals(ver) || "2".equals(ver)) {
-            // Non-destructive upgrade from v1.1.3-v1.1.5 to v1.1.6: enable newly exposed mobile GPU/CPU throughput opts.
+        } else if ("1".equals(ver) || "2".equals(ver) || "3".equals(ver)) {
+            // Non-destructive upgrade to v1.1.7: restore crisp 100% native FBO scale and keep FP16/recorder opts enabled.
             Boolean mali = detectMaliGpu(c);
             boolean adreno = (mali != null && !mali);
             map.put("DM_VK_MALI_FP16", "1");
@@ -149,8 +149,8 @@ public final class GameSettings {
                 map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
             }
             if (adreno && !map.containsKey("DM_VK_GPU_FLOOR")) map.put("DM_VK_GPU_FLOOR", "85");
-            if (!map.containsKey("DM_VK_FB_SCALE")) map.put("DM_VK_FB_SCALE", isEntryMidGpu(c) ? "75" : "100");
-            map.put("DM_AUTOTUNED", "3");
+            if ("3".equals(ver) || !map.containsKey("DM_VK_FB_SCALE")) map.put("DM_VK_FB_SCALE", "100");
+            map.put("DM_AUTOTUNED", "4");
             saveEnv(c, map);
         }
     }
@@ -161,7 +161,6 @@ public final class GameSettings {
         Boolean mali = detectMaliGpu(c);
         boolean adreno = (mali != null && !mali);
         boolean multi = Runtime.getRuntime().availableProcessors() >= 4;
-        boolean mid = isEntryMidGpu(c);
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
@@ -169,27 +168,25 @@ public final class GameSettings {
         map.put("DM_VK_RECORDER", multi ? "1" : "0");
         map.put("DM_SPV_PRECISE", "1");
         map.put("DM_PRESENT_HZ", "");
+        map.put("DM_VK_FB_SCALE", "100");
         if ("quality".equals(profile)) {
             map.put("DM_OPMODE", "1");
-            map.put("DM_VK_FB_SCALE", "100");
             map.put("DM_VK_PREWARM", "6000");
             map.put("DM_VK_MID_DRAWS", "256");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else if ("balanced".equals(profile)) {
             map.put("DM_OPMODE", "0");
-            map.put("DM_VK_FB_SCALE", mid ? "80" : "100");
             map.put("DM_VK_PREWARM", "3000");
             map.put("DM_VK_MID_DRAWS", "256");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else {
             map.put("DM_OPMODE", "0");
-            map.put("DM_VK_FB_SCALE", "75");
             map.put("DM_VK_PREWARM", "1500");
             map.put("DM_VK_MID_DRAWS", "512");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "100");
             map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
         }
-        map.put("DM_AUTOTUNED", "3");
+        map.put("DM_AUTOTUNED", "4");
         saveEnv(c, map);
     }
 
@@ -201,7 +198,7 @@ public final class GameSettings {
         Map<String, String> map = loadEnv(c);
         Boolean mali = detectMaliGpu(c);
         boolean adreno = (mali != null && !mali);
-        String fbScale = isEntryMidGpu(c) ? "75" : "100";
+        String fbScale = "100";
         map.put("DM_OPMODE", "0");
         map.put("DM_VK_FB_SCALE", fbScale);
         map.put("DM_PRESENT_HZ", "");
@@ -216,7 +213,7 @@ public final class GameSettings {
         if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         else map.remove("DM_VK_GPU_FLOOR");
         map.put("DM_SPV_PRECISE", "1");
-        map.put("DM_AUTOTUNED", "3");
+        map.put("DM_AUTOTUNED", "4");
 
         int[] masks = detectCpuClusterMasks();
         int bigMask = masks[0], littleMask = masks[1];

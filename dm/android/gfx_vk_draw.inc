@@ -1256,6 +1256,7 @@ static size_t spv_fit_harr(const uint32_t *code, size_t nw, const char *what, ui
 typedef struct { VkFormat color[8]; VkFormat depth; uint32_t ncolor, samples; } rp_key;
 typedef struct { rp_key k; uint32_t clr; } rpo_key;
 static nvn_hmap g_rps = {.klen = sizeof(rp_key)}, g_rpos = {.klen = sizeof(rpo_key)}, g_fbs = {.klen = 9 * sizeof(VkImageView) + 12};
+static int tight_deps_on(void) { static int c = -1; if (c < 0) { const char *e = getenv("DM_VK_TIGHT_DEPS"); c = (!e || e[0] != '0') ? 1 : 0; } return c; }
 static VkRenderPass rp_get_op(const rp_key *k, uint32_t clr) {
     if (!clr) { VkRenderPass rp = nvn_hm_get(&g_rps, k); if (rp) return rp; }
     else { rpo_key ok; memset(&ok, 0, sizeof ok); ok.k = *k; ok.clr = clr; VkRenderPass rp = nvn_hm_get(&g_rpos, &ok); if (rp) return rp; }
@@ -1275,8 +1276,17 @@ static VkRenderPass rp_get_op(const rp_key *k, uint32_t clr) {
         dr = (VkAttachmentReference){na++, VK_IMAGE_LAYOUT_GENERAL};
     }
     VkSubpassDescription sp = {.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS, .colorAttachmentCount = k->ncolor, .pColorAttachments = cr, .pDepthStencilAttachment = k->depth ? &dr : NULL};
-    VkSubpassDependency dep[2] = {{VK_SUBPASS_EXTERNAL, 0, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT, 0},
-                                  {0, VK_SUBPASS_EXTERNAL, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT, 0}};
+    VkPipelineStageFlags dep_in_src = tight_deps_on()
+        ? (VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
+        : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    VkPipelineStageFlags dep_out_src = tight_deps_on()
+        ? (VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
+        : VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+    VkPipelineStageFlags dep_out_dst = tight_deps_on()
+        ? (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
+        : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    VkSubpassDependency dep[2] = {{VK_SUBPASS_EXTERNAL, 0, dep_in_src, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT, 0},
+                                  {0, VK_SUBPASS_EXTERNAL, dep_out_src, dep_out_dst, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT, 0}};
     VkRenderPassCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, .attachmentCount = na, .pAttachments = at, .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 2, .pDependencies = dep};
     VkRenderPass rp = VK_NULL_HANDLE;
     if (vkCreateRenderPass(g_vk.dev, &ci, NULL, &rp) != VK_SUCCESS) { RED_ONCE(82, "render pass creation failed"); return VK_NULL_HANDLE; }

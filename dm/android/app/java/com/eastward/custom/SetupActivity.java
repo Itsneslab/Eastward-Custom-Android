@@ -184,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.6");
+        verTag.setText("v1.1.7");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);

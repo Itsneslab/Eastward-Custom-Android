@@ -96,10 +96,10 @@ set(ANDROID_C
 add_compile_options(-fsigned-char)
 add_library(vpx STATIC ${VPX_C})
 target_include_directories(vpx PRIVATE ${DM}/third_party/libvpx ${DM}/third_party/libvpx/config)
-target_compile_options(vpx PRIVATE -O2 -w -fvisibility=hidden)
+target_compile_options(vpx PRIVATE -O3 -w -fvisibility=hidden)
 
-# The replay records every draw on the game's render thread (descriptor writes, pipeline and view lookups, vertex and uniform copies): -O2 there, after the target's -O1
-set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/gfx_vk.c PROPERTIES COMPILE_OPTIONS "-O2" OBJECT_DEPENDS "${SHADER_INC}")
+# The replay records every draw on the game's render thread (descriptor writes, pipeline and view lookups, vertex and uniform copies): -O3 there
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/gfx_vk.c PROPERTIES COMPILE_OPTIONS "-O3" OBJECT_DEPENDS "${SHADER_INC}")
 set_source_files_properties(${DM}/gfx/nvn/hle_nvn.c PROPERTIES COMPILE_OPTIONS "-fno-omit-frame-pointer")   # frame records: DM_NVN_SIZE_TRACE walks the game's call chain from them
 add_library(dmcore OBJECT ${HOST_C} ${GFX_C} ${ANDROID_C} ${ASM_ELF} ${SHADER_INC})
 add_dependencies(dmcore game_profile build_stamp)
@@ -108,7 +108,7 @@ target_include_directories(dmcore PUBLIC
   ${GEN}/${GAME} ${GEN} ${DM}/third_party/libvpx ${DM}/third_party/stb_vorbis)
 # x18 holds the guest thread's slot block (dm.h dm_slot_get): the compiler must never use it (Android reserves it by default; stated anyway)
 target_compile_options(dmcore PRIVATE
-  $<$<COMPILE_LANGUAGE:C>:-include dm_android.h -std=gnu11 -O2 -g -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
+  $<$<COMPILE_LANGUAGE:C>:-include dm_android.h -std=gnu11 -O3 -flto=thin -g -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
   -Wno-format -Wno-deprecated-declarations -Wno-gnu-folding-constant -Wno-multichar -Wno-four-char-constants -Wno-unknown-pragmas -Wno-missing-braces>
   -ffixed-x18 -fvisibility=hidden -fPIC -march=armv8-a)
 target_compile_definitions(dmcore PRIVATE DM_ANDROID=1)
@@ -119,19 +119,20 @@ set(DM_LIBS vpx log android nativewindow aaudio mediandk m dl)   # nativewindow:
 set(GLUE ${ANDROID_NDK}/sources/android/native_app_glue)
 add_library(dmhost_app SHARED $<TARGET_OBJECTS:dmcore> ${CMAKE_CURRENT_SOURCE_DIR}/front_android.c ${CMAKE_CURRENT_SOURCE_DIR}/nvn_demo.c ${GLUE}/android_native_app_glue.c)
 target_include_directories(dmhost_app PRIVATE $<TARGET_PROPERTY:dmcore,INTERFACE_INCLUDE_DIRECTORIES> ${GLUE})
-target_compile_options(dmhost_app PRIVATE -include dm_android.h -ffixed-x18 -O2 -g -Wall)
+target_compile_options(dmhost_app PRIVATE -include dm_android.h -ffixed-x18 -march=armv8-a -O3 -flto=thin -g -Wall)
 target_link_libraries(dmhost_app ${DM_LIBS} jnigraphics)
-target_link_options(dmhost_app PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384 -u ANativeActivity_onCreate)
+target_link_options(dmhost_app PRIVATE -flto=thin -Wl,--no-undefined -Wl,-z,max-page-size=16384 -u ANativeActivity_onCreate)
 set_target_properties(dmhost_app PROPERTIES OUTPUT_NAME dmhost_${GAME})
 add_library(nxloader SHARED ${CMAKE_CURRENT_SOURCE_DIR}/loader.c)
-target_compile_options(nxloader PRIVATE -O2 -Wall -fvisibility=hidden)
+target_compile_options(nxloader PRIVATE -O3 -Wall -fvisibility=hidden)
 target_link_libraries(nxloader log android dl)
 target_link_options(nxloader PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
 
 add_executable(dmhost_cli $<TARGET_OBJECTS:dmcore> ${CMAKE_CURRENT_SOURCE_DIR}/front_cli.c ${CMAKE_CURRENT_SOURCE_DIR}/nvn_demo.c)
 set_target_properties(dmhost_cli PROPERTIES OUTPUT_NAME dmhost)
 target_include_directories(dmhost_cli PRIVATE $<TARGET_PROPERTY:dmcore,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_options(dmhost_cli PRIVATE -include dm_android.h -ffixed-x18 -O2 -g -Wall)
+target_compile_options(dmhost_cli PRIVATE -include dm_android.h -ffixed-x18 -march=armv8-a -O3 -flto=thin -g -Wall)
+target_link_options(dmhost_cli PRIVATE -flto=thin)
 target_link_libraries(dmhost_cli ${DM_LIBS})
 target_link_options(dmhost_cli PRIVATE -Wl,-z,max-page-size=16384 -Wl,--error-limit=0)
 

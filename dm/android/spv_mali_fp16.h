@@ -1,6 +1,6 @@
-// Adds RelaxedPrecision decorations to 32-bit float arithmetic and local Function temporaries in Fragment shaders on Arm Mali
-// (Bifrost / Valhall), enabling native dual-issue FP16 ALU while preserving full FP32 precision for texture coordinates,
-// derivatives, bitcasts, conversions, BuiltIns, and Uniform/Input loads. Self-contained (no libc).
+// Adds RelaxedPrecision decorations to safe 32-bit float arithmetic, local Function temporaries, and non-strict
+// Uniform/Input loads in Fragment shaders on Adreno/Mali, enabling native dual-issue FP16 ALU while keeping texture
+// coordinates, derivatives, bitcasts, conversions, BuiltIns, and coordinate-tainted loads in full FP32. Self-contained.
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
@@ -124,7 +124,7 @@ static size_t spv_mali_fp16(const uint32_t *w, size_t n, uint8_t *flags, uint32_
             uint32_t r = w[i + 2];
             if (!(flags[r] & (SPV_F16_STRICT | SPV_F16_RELAXED | SPV_F16_DEC))) { flags[r] |= SPV_F16_DEC; count++; }
         } else if (op == 61 && len >= 4 && w[i + 1] < bound && (flags[w[i + 1]] & SPV_F16_F32) &&
-                   w[i + 3] < bound && (flags[w[i + 3]] & SPV_F16_FN_VAR) && w[i + 2] < bound) {
+                   w[i + 2] < bound && w[i + 3] < bound && !(flags[w[i + 3]] & SPV_F16_STRICT)) {
             uint32_t r = w[i + 2];
             if (!(flags[r] & (SPV_F16_STRICT | SPV_F16_RELAXED | SPV_F16_DEC))) { flags[r] |= SPV_F16_DEC; count++; }
         } else if ((spv_f16_arith_op(op) || spv_f16_img_sample(op)) && len >= 3 && w[i + 1] < bound && (flags[w[i + 1]] & SPV_F16_F32) && w[i + 2] < bound) {
