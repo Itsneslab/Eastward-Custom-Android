@@ -22,30 +22,33 @@
 #define SLOT_PAGE 4096
 #define SCS_SIZE (16 * 1024)
 #define SLOT_COUNT 4
-typedef struct { uint8_t *map; size_t len; uint64_t bionic_x18; } slot_block;
+typedef struct { uint8_t *map; size_t len; uint8_t *slot_base; uint64_t bionic_x18; } slot_block;
 static __thread slot_block t_blk;
 static pthread_key_t g_blk_key; static pthread_once_t g_blk_once = PTHREAD_ONCE_INIT;
-static inline uint64_t *slots(void) { return t_blk.map ? (uint64_t *)(t_blk.map + SLOT_PAGE - 8 * SLOT_COUNT) : NULL; }
+static inline uint64_t *slots(void) { return t_blk.slot_base ? (uint64_t *)(t_blk.slot_base - 8 * SLOT_COUNT) : NULL; }
 // Thread exit: x18 goes back to the value bionic gave the thread before the block is unmapped (code that runs after this destructor may use the shadow call stack)
 static void blk_free(void *p) {
     (void)p;
     if (!t_blk.map) return;
     __asm__ volatile("mov x18, %0" :: "r"(t_blk.bionic_x18) : "memory");
-    munmap(t_blk.map, t_blk.len); t_blk.map = NULL;
+    munmap(t_blk.map, t_blk.len); t_blk.map = NULL; t_blk.slot_base = NULL;
 }
 static void blk_key_init(void) { if (pthread_key_create(&g_blk_key, blk_free)) die("cannot create the slot block key"); }
 void dm_slots_thread_init(void) {
     if (!t_blk.map) {
         pthread_once(&g_blk_once, blk_key_init);
-        size_t len = SLOT_PAGE + SCS_SIZE + 4096;
+        size_t pg = (size_t)getpagesize();
+        size_t slot_pg = pg > SLOT_PAGE ? pg : SLOT_PAGE;
+        size_t scs_sz = (SCS_SIZE + pg - 1) & ~(pg - 1);
+        size_t len = slot_pg + scs_sz + pg;
         uint8_t *m = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (m == MAP_FAILED) die("thread slot block: mmap failed");
-        if (mprotect(m + SLOT_PAGE + SCS_SIZE, 4096, PROT_NONE)) die("thread slot block: guard page");
+        if (mprotect(m + slot_pg + scs_sz, pg, PROT_NONE)) die("thread slot block: guard page");
         uint64_t x18; __asm__ volatile("mov %0, x18" : "=r"(x18));
-        t_blk.map = m; t_blk.len = len; t_blk.bionic_x18 = x18;
+        t_blk.map = m; t_blk.len = len; t_blk.slot_base = m + slot_pg; t_blk.bionic_x18 = x18;
         pthread_setspecific(g_blk_key, m);   // only so that the destructor runs
     }
-    __asm__ volatile("mov x18, %0" :: "r"(t_blk.map + SLOT_PAGE) : "memory");
+    __asm__ volatile("mov x18, %0" :: "r"(t_blk.slot_base) : "memory");
 }
 void dm_slots_x18_restore(void) { if (t_blk.map) __asm__ volatile("mov x18, %0" :: "r"(t_blk.bionic_x18) : "memory"); }
 int64_t dm_slot_keypage_value(pthread_key_t k) { return -8 * SLOT_COUNT + 8 * (int64_t)k; }

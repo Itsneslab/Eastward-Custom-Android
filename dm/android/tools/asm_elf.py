@@ -12,7 +12,15 @@ RENAME = {'mach_absolute_time': 'dm_mach_absolute_time'}
 def convert(text):
     out = []
     for line in text.splitlines():
+        if re.match(r'^\s*\.arch_extension\s+lse\b', line):
+            continue
         code, sep, comment = line.partition('//')
+        if re.match(r'^\s*stadd\s+x9\s*,\s*\[\s*x10\s*\]\s*$', code):
+            out.append('91: ldxr x11, [x10]\n    add x11, x11, x9\n    stxr w12, x11, [x10]\n    cbnz w12, 91b')
+            continue
+        if re.match(r'^\s*stadd\s+x17\s*,\s*\[\s*x16\s*\]\s*$', code):
+            out.append('    stp x9, x10, [sp, #-16]!\n92: ldxr x9, [x16]\n    add x9, x9, x17\n    stxr w10, x9, [x16]\n    cbnz w10, 92b\n    ldp x9, x10, [sp], #16')
+            continue
         code = re.sub(r'(?<![\w.:])_([A-Za-z]\w*)', lambda m: RENAME.get(m.group(1), m.group(1)), code)
         code = re.sub(r'\b(\w+)@PAGEOFF\b', r':lo12:\1', code)
         code = re.sub(r'\b(\w+)@PAGE\b', r'\1', code)

@@ -110,7 +110,7 @@ target_include_directories(dmcore PUBLIC
 target_compile_options(dmcore PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-include dm_android.h -std=gnu11 -O1 -g -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
   -Wno-format -Wno-deprecated-declarations -Wno-gnu-folding-constant -Wno-multichar -Wno-four-char-constants -Wno-unknown-pragmas -Wno-missing-braces>
-  -ffixed-x18 -fvisibility=hidden -fPIC -march=armv8.2-a+lse)
+  -ffixed-x18 -fvisibility=hidden -fPIC -march=armv8-a)
 target_compile_definitions(dmcore PRIVATE DM_ANDROID=1)
 
 # no libvulkan.so: vk_driver.c opens it, or DM_VK_DRIVER's driver in its place
@@ -201,7 +201,7 @@ if(DM_TESTS)
           ${CMAKE_CURRENT_SOURCE_DIR}/tests/t_android_stubs.c ${DM}/gfx/tests/t_host_stubs.c ${CMAKE_CURRENT_SOURCE_DIR}/apple_stubs.c ${GEN}/asm/nvn_entry.S ${GEN}/asm/nvn_thunks.S
           ${CMAKE_CURRENT_SOURCE_DIR}/vk_driver.c ${CMAKE_CURRENT_SOURCE_DIR}/vk_start.c)
   target_include_directories(t_nvn PRIVATE ${DM}/gfx/nvn/include ${DM}/gfx/nvn ${DM}/gfx/tex ${DM}/third_party/vulkan-headers/include)
-  target_compile_options(t_nvn PRIVATE -march=armv8.2-a+lse)
+  target_compile_options(t_nvn PRIVATE -march=armv8-a)
   target_link_libraries(t_nvn dl)
   target_link_options(t_nvn PRIVATE -Wl,--error-limit=0)
 endif()

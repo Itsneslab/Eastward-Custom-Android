@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1.3", 11, ACCENT, true));
+        brandCol.addView(text(a, "Custom v1.1.4", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
