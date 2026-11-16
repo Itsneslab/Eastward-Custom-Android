@@ -2,8 +2,10 @@ package com.eastward.custom;
 
 import android.app.NativeActivity;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.WindowManager;
 
 /**
  * Full-screen landscape host activity for Eastward (010071B00F63A000).
@@ -15,6 +17,11 @@ public class GameActivity extends NativeActivity {
     @Override
     protected void onCreate(Bundle b) {
         current = this;
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
+        }
         super.onCreate(b);
         immersive();
     }

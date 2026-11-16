@@ -236,7 +236,6 @@ def main():
     ]
     run(split_cmd, stream_progress=True, progress_scale=(0, 30), extra_env={'DM_GLSLC_CAPTURE': user_glslc})
 
-    shutil.rmtree(spv_out, ignore_errors=True)
     os.makedirs(spv_out, exist_ok=True)
     j = max(1, min(4, int(os.environ.get('J', '2'))))
     xlate = os.path.join(a.bin, 'dmsh_xlate')
@@ -284,7 +283,7 @@ def main():
             'DM_VK_CLEAR_LOADOP=1',
             'DM_VK_MALI_FP16=1',
             'DM_VK_SET_REUSE=1',
-            'DM_SPV_PRECISE=0',
+            'DM_SPV_PRECISE=1',
             'DM_VK_PIN=c0',
             'DM_VK_PIN_DONE=3f',
             f'DM_GLSLC_CAPTURE={user_glslc}',

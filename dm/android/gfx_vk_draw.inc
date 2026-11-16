@@ -737,14 +737,20 @@ static void sh_bind_apply(vshader *s) {
     for (int i = 0; i < s->ntx; i++) s->tx[i].binding = (int32_t)spv_bmap_get(m, (uint32_t)s->tx[i].binding);
     for (int i = 0; i < s->nim; i++) s->im[i].binding = (int32_t)spv_bmap_get(m, (uint32_t)s->im[i].binding);
 }
+extern int dm_live_translate_shaders(void);
 static vshader *sh_get(const char *key) {
     if (key[0] >= 'g' && key[0] <= 'v') return memu_pvs_get(key);   // a mesh shader's pass-through vertex shader (gfx_vk_meshemu.inc memu_pvs_key)
     char k[16]; memcpy(k, key, 16);
     vshader *s = nvn_hm_get(&g_sh, k); if (s) return s->ok ? s : NULL;
-    s = calloc(1, sizeof *s); memcpy(s->key, key, 16); nvn_hm_put(&g_sh, k, s);
     if (!g_spv_dir[0]) { const char *d = getenv("DM_SPV_DIR"); snprintf(g_spv_dir, sizeof g_spv_dir, "%s", d ? d : ""); }
-    char p[700]; snprintf(p, sizeof p, "%s/%s.res.json", g_spv_dir, s->key);
+    char sk[17]; memcpy(sk, key, 16); sk[16] = 0;
+    char p[700]; snprintf(p, sizeof p, "%s/%s.res.json", g_spv_dir, sk);
     FILE *f = fopen(p, "rb");
+    if (!f) {
+        dm_live_translate_shaders();
+        f = fopen(p, "rb");
+    }
+    s = calloc(1, sizeof *s); memcpy(s->key, key, 16); nvn_hm_put(&g_sh, k, s);
     if (!f) { static int n; if (n++ < 16) LOG("[RED] [vk] no translated shader %s (DM_SPV_DIR %s)", s->key, g_spv_dir); return NULL; }
     fseek(f, 0, SEEK_END); long len = ftell(f); fseek(f, 0, SEEK_SET); char *txt = calloc(1, (size_t)len + 1); fread(txt, 1, (size_t)len, f); fclose(f);
     jv r; js_parse(txt, &r); free(txt);

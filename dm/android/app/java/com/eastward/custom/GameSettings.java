@@ -116,9 +116,23 @@ public final class GameSettings {
         map.put("DM_VK_ASYNC_PIPE", "1");
         map.put("DM_VK_PREWARM", "3000");
         map.put("DM_VK_PRESENT_TIMING", "1");
-        map.put("DM_SPV_PRECISE", "0");
-        map.put("DM_VK_UCLAMP_MIN", "0");
+        map.put("DM_SPV_PRECISE", "1");
+        int[] masks = detectCpuClusterMasks();
+        if (masks[0] != 0 && masks[1] != 0) {
+            map.put("DM_VK_PIN", Integer.toHexString(masks[0]));
+            map.put("DM_VK_PIN_DONE", Integer.toHexString(masks[1]));
+        }
+        map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
+        map.put("DM_AUTOTUNED", "1");
         saveEnv(c, map);
+    }
+
+    /** Ensure first launch auto-configures chipset-appropriate CPU/GPU flags once without overwriting user tweaks later. */
+    public static void ensureAutoTuned(Context c) {
+        Map<String, String> map = loadEnv(c);
+        if (!"1".equals(map.get("DM_AUTOTUNED"))) {
+            autoTuneDevice(c);
+        }
     }
 
     /** Apply a universal performance profile suitable across Snapdragon, MediaTek, and Exynos devices. */
@@ -127,7 +141,7 @@ public final class GameSettings {
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
-        map.put("DM_SPV_PRECISE", "0");
+        map.put("DM_SPV_PRECISE", "1");
         map.put("DM_PRESENT_HZ", "");
         if ("quality".equals(profile)) {
             map.put("DM_OPMODE", "1");
@@ -157,7 +171,8 @@ public final class GameSettings {
         map.put("DM_VK_ASYNC_PIPE", "1");
         map.put("DM_VK_PREWARM", "1500");
         map.put("DM_VK_PRESENT_TIMING", "1");
-        map.put("DM_SPV_PRECISE", "0");
+        map.put("DM_SPV_PRECISE", "1");
+        map.put("DM_AUTOTUNED", "1");
 
         int[] masks = detectCpuClusterMasks();
         int bigMask = masks[0], littleMask = masks[1];

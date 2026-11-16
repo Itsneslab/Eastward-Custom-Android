@@ -22,9 +22,12 @@ static void capture(const void *obj) {
     uint64_t h = 0xcbf29ce484222325ull; for (uint32_t i = 0; i < n; i++) h = (h ^ out[i]) * 0x100000001b3ull;
     char path[1024]; snprintf(path, sizeof path, "%s/%016llx.glslc", dir, (unsigned long long)h);
     struct stat st; if (!stat(path, &st)) return;
-    FILE *f = fopen(path, "wb"); if (!f) { LOG("[RED] glslc: cannot write %s", path); return; }
-    fwrite(out, 1, n, f); fclose(f);
-    chmod(path, 0666);   // readable by others: an Android app's umask makes it 0600, and adb could not pull the captures to the computer
+    char tmp[1032]; snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb"); if (!f) { LOG("[RED] glslc: cannot write %s", tmp); return; }
+    fwrite(out, 1, n, f); fflush(f); fclose(f);
+    chmod(tmp, 0666);   // readable by others: an Android app's umask makes it 0600, and adb could not pull the captures to the computer
+    rename(tmp, path);
+    chmod(path, 0666);
     LOG("glslc: saved a run-time compile output %s (%u bytes)", path, n);
 }
 

@@ -241,7 +241,29 @@ int front_screen_max_fps(void) { return 0; }
 int front_ctrl_support(int min, int max) { (void)min; (void)max; return -1; }   // no controller prompt yet: the applet closes as the player would (hle_hid.c ctrl_support)
 void front_screen_match(int fps) { (void)fps; }
 void front_progress(const char *title, long done, long total) { if (title) LOG("progress: %s %ld / %ld", title, done, total); }
-static jclass g_gp;   // org.nxnative.android.Gamepad (java/), from the activity's class loader
+static jclass g_gp;   // com.eastward.custom.Gamepad (java/), from the activity's class loader
+static jclass g_lsc;  // com.eastward.custom.LiveShaderCompiler
+static jmethodID g_lsc_mid;
+static pthread_mutex_t g_lsc_mu = PTHREAD_MUTEX_INITIALIZER;
+static void *live_translate_thread(void *p) {
+    int *out = p; *out = 0;
+    if (!g_lsc || !g_lsc_mid || !g_app || !g_app->activity) return NULL;
+    JavaVM *vm = g_app->activity->vm; JNIEnv *e = NULL;
+    if ((*vm)->AttachCurrentThread(vm, &e, NULL)) return NULL;
+    jint r = (*e)->CallStaticIntMethod(e, g_lsc, g_lsc_mid, g_app->activity->clazz);
+    if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionDescribe(e); (*e)->ExceptionClear(e); r = 0; }
+    (*vm)->DetachCurrentThread(vm);
+    *out = (int)r;
+    return NULL;
+}
+int dm_live_translate_shaders(void) {
+    if (!g_lsc || !g_lsc_mid) return 0;
+    pthread_mutex_lock(&g_lsc_mu);
+    int count = 0; pthread_t th;
+    if (!pthread_create(&th, NULL, live_translate_thread, &count)) pthread_join(th, NULL);
+    pthread_mutex_unlock(&g_lsc_mu);
+    return count;
+}
 // The software keyboard (hle_swkbd.c): Gamepad.ask shows an input box on the UI thread and the guest thread that asked waits for it.
 // The Java call runs on a host thread of its own, never on the guest's thread: attaching a thread to the VM makes ART protect the page above bionic's guard page at the
 // bottom of its stack (its implicit stack-overflow check), and it stays protected after the detach. The guest's main thread runs on its host thread's stack, which
@@ -668,6 +690,14 @@ static void gamepad_start(void) {
         {"nativePause", "(Z)Z", (void *)n_pause}};
     if ((*e)->RegisterNatives(e, c, nm, sizeof nm / sizeof *nm)) { (*e)->ExceptionClear(e); LOG("[RED] Gamepad natives not registered"); return; }
     g_gp = (*e)->NewGlobalRef(e, c);
+    jstring lsc_name = (*e)->NewStringUTF(e, "com.eastward.custom.LiveShaderCompiler");
+    jclass lc = cl ? (*e)->CallObjectMethod(e, cl, (*e)->GetMethodID(e, (*e)->FindClass(e, "java/lang/ClassLoader"), "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;"), lsc_name) : NULL;
+    if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionClear(e); lc = NULL; }
+    if (lc) {
+        g_lsc = (*e)->NewGlobalRef(e, lc);
+        g_lsc_mid = (*e)->GetStaticMethodID(e, g_lsc, "translateNow", "(Landroid/app/Activity;)I");
+        if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionClear(e); g_lsc_mid = NULL; }
+    }
     void dm_haptics_android_init(JavaVM *vm, jclass cls, JNIEnv *e); dm_haptics_android_init(g_app->activity->vm, g_gp, e);
     (*e)->CallStaticVoidMethod(e, g_gp, (*e)->GetStaticMethodID(e, g_gp, "start", "(Landroid/app/Activity;)V"), act);
     if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionDescribe(e); (*e)->ExceptionClear(e); }

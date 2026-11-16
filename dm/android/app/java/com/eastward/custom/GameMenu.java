@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1", 11, ACCENT, true));
+        brandCol.addView(text(a, "Custom v1.1.2", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -389,6 +389,15 @@ public final class GameMenu {
         heading(a, UiText.tr(a, "Touch Controller", "Kontrol Sentuh"));
         presetCard(a);
 
+        toggleRowCard(a, UiText.tr(a, "Auto-Hide Touch on Gamepad", "Sembunyikan Saat Stick Aktif"),
+                UiText.tr(a, "Keep OFF to ensure on-screen buttons and D-Pad always stay visible",
+                        "Biarkan MATI agar tombol & D-Pad layar selalu tampil"),
+                pad != null && pad.autoHideOnPad,
+                null,
+                checked -> {
+                    if (pad != null) pad.setAutoHideOnPad(checked);
+                });
+
         sliderCard(a, UiText.tr(a, "Touch Opacity", "Transparansi Tombol"), pad != null ? pad.opacityPct : 75, 20, 100,
                 v -> v + " %",
                 v -> { if (pad != null) pad.setOpacity(v); });
@@ -488,9 +497,9 @@ public final class GameMenu {
         envToggleCard(a, UiText.tr(a, "Display Timing Sync", "Sinkronisasi Timing Layar"), "DM_VK_PRESENT_TIMING", true,
                 UiText.tr(a, "Turn off if frame pacing stutters on your ROM or driver",
                         "Matikan jika terasa tersendat pada driver/ROM HP tertentu"));
-        envToggleCard(a, UiText.tr(a, "Precise SPIR-V Float", "Presisi Float SPIR-V"), "DM_SPV_PRECISE", false,
-                UiText.tr(a, "Enable only if troubleshooting rare shader math artifacts",
-                        "Aktifkan hanya jika ada glitch warna atau garis di shader"));
+        envToggleCard(a, UiText.tr(a, "Precise SPIR-V Float", "Presisi Float SPIR-V"), "DM_SPV_PRECISE", true,
+                UiText.tr(a, "Keep enabled to avoid screen and depth glitches on Mali & mobile GPUs",
+                        "Biarkan aktif untuk mencegah glitch layar dan shader di GPU HP"));
     }
 
     private static void cpuPinCard(Activity a) {

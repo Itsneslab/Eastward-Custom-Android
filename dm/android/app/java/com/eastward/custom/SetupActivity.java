@@ -105,6 +105,7 @@ public final class SetupActivity extends Activity {
         }
 
         registerDynamicShortcut();
+        GameSettings.ensureAutoTuned(this);
 
         buildUi();
         requestStoragePermissionIfNeeded();
@@ -183,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.1");
+        verTag.setText("v1.1.2");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
@@ -553,6 +554,11 @@ public final class SetupActivity extends Activity {
                 UiText.tr(this, "Display Timing Sync", "Sinkronisasi Timing Layar"),
                 UiText.tr(this, "Smooth frame pacing on Google/Mali/Snapdragon", "Haluskan frame pacing di layar HP"),
                 "DM_VK_PRESENT_TIMING", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Precise SPIR-V Float", "Presisi Float SPIR-V"),
+                UiText.tr(this, "Prevent screen/depth glitches on Mali & mobile GPUs", "Cegah glitch layar & kedalaman di GPU Mali/HP"),
+                "DM_SPV_PRECISE", true, dp);
         togPanel.addView(divider(dp));
         addToggleRow(togPanel,
                 UiText.tr(this, "Show FPS Counter", "Tampilkan Counter FPS"),

@@ -24,6 +24,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -77,6 +78,7 @@ public final class Gamepad extends View {
     int opacityPct;
     float globalScale;
     boolean padOff;
+    boolean autoHideOnPad;
     boolean editMode;
     int editSel = -1;
     int editPtr = -1;
@@ -223,6 +225,7 @@ public final class Gamepad extends View {
 
         preset = prefs.getInt("preset", PRESET_RPG);
         if (preset < 0 || preset > PRESET_TAP) preset = PRESET_RPG;
+        autoHideOnPad = prefs.getBoolean("auto_hide_pad", false);
         opacityPct = prefs.getInt("opacity", 75);
         globalScale = prefs.getFloat("scale", 1.0f);
         loadSlotOverrides();
@@ -363,7 +366,7 @@ public final class Gamepad extends View {
     boolean slotVisible(int slot) {
         if (preset == PRESET_TAP) return false;
         if (preset == PRESET_RPG && slot == S_ZL) return false;
-        if (preset == PRESET_2D && (slot == S_ZL || slot == S_ZR || slot == S_DPAD)) return false;
+        if (preset == PRESET_2D && (slot == S_ZL || slot == S_ZR)) return false;
         return true;
     }
 
@@ -688,7 +691,7 @@ public final class Gamepad extends View {
         }
         if (gameMoved) pushGame();
         recompute();
-        if (swap) setPreset((preset + 1) % 4);
+        if (swap) setPreset(preset == PRESET_TAP ? PRESET_RPG : (preset + 1) % 3);
         if (menuGo) {
             menuGo = false;
             openPauseMenu(true);
@@ -709,9 +712,15 @@ public final class Gamepad extends View {
                     else if (i == 3) {
                         editMode = false;
                         editSel = -1;
+                        if (preset == PRESET_TAP) preset = PRESET_RPG;
+                        if (padOff || autoHideOnPad) {
+                            autoHideOnPad = false;
+                            prefs.edit().putBoolean("auto_hide_pad", false).apply();
+                            padOff = false;
+                        }
                         saveSlotOverrides();
                         nativePause(false);
-                        invalidate();
+                        wakeControls();
                     }
                     return true;
                 }
@@ -1041,16 +1050,28 @@ public final class Gamepad extends View {
         });
     }
 
+    void setAutoHideOnPad(boolean on) {
+        autoHideOnPad = on;
+        prefs.edit().putBoolean("auto_hide_pad", on).apply();
+        padsChanged();
+        wakeControls();
+    }
+
     void padsChanged() {
         boolean found = false;
-        for (int id : InputDevice.getDeviceIds()) {
-            InputDevice d = InputDevice.getDevice(id);
-            if (d == null || d.isVirtual()) continue;
-            int s = d.getSources();
-            if ((s & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
-                    || (s & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK) {
-                found = true;
-                break;
+        if (autoHideOnPad) {
+            for (int id : InputDevice.getDeviceIds()) {
+                InputDevice d = InputDevice.getDevice(id);
+                if (d == null || d.isVirtual()) continue;
+                int s = d.getSources();
+                if ((s & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                        && d.getControllerNumber() > 0) {
+                    boolean[] has = d.hasKeys(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B);
+                    if (has.length >= 2 && (has[0] || has[1])) {
+                        found = true;
+                        break;
+                    }
+                }
             }
         }
         if (found != padOff) {
