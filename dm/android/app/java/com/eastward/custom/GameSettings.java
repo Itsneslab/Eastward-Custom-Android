@@ -128,7 +128,8 @@ public final class GameSettings {
             map.put("DM_VK_PIN_DONE", Integer.toHexString(masks[1]));
         }
         map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
-        map.put("DM_AUTOTUNED", "2");
+        map.put("DM_VK_FB_SCALE", isEntryMidGpu(c) ? "75" : "100");
+        map.put("DM_AUTOTUNED", "3");
         saveEnv(c, map);
     }
 
@@ -136,10 +137,10 @@ public final class GameSettings {
     public static void ensureAutoTuned(Context c) {
         Map<String, String> map = loadEnv(c);
         String ver = map.get("DM_AUTOTUNED");
-        if (!"1".equals(ver) && !"2".equals(ver)) {
+        if (!"1".equals(ver) && !"2".equals(ver) && !"3".equals(ver)) {
             autoTuneDevice(c);
-        } else if ("1".equals(ver)) {
-            // Non-destructive upgrade from v1.1.3/v1.1.4 to v1.1.5: enable newly exposed mobile GPU/CPU throughput opts.
+        } else if ("1".equals(ver) || "2".equals(ver)) {
+            // Non-destructive upgrade from v1.1.3-v1.1.5 to v1.1.6: enable newly exposed mobile GPU/CPU throughput opts.
             Boolean mali = detectMaliGpu(c);
             boolean adreno = (mali != null && !mali);
             map.put("DM_VK_MALI_FP16", "1");
@@ -148,7 +149,8 @@ public final class GameSettings {
                 map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
             }
             if (adreno && !map.containsKey("DM_VK_GPU_FLOOR")) map.put("DM_VK_GPU_FLOOR", "85");
-            map.put("DM_AUTOTUNED", "2");
+            if (!map.containsKey("DM_VK_FB_SCALE")) map.put("DM_VK_FB_SCALE", isEntryMidGpu(c) ? "75" : "100");
+            map.put("DM_AUTOTUNED", "3");
             saveEnv(c, map);
         }
     }
@@ -159,6 +161,7 @@ public final class GameSettings {
         Boolean mali = detectMaliGpu(c);
         boolean adreno = (mali != null && !mali);
         boolean multi = Runtime.getRuntime().availableProcessors() >= 4;
+        boolean mid = isEntryMidGpu(c);
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
@@ -168,22 +171,25 @@ public final class GameSettings {
         map.put("DM_PRESENT_HZ", "");
         if ("quality".equals(profile)) {
             map.put("DM_OPMODE", "1");
+            map.put("DM_VK_FB_SCALE", "100");
             map.put("DM_VK_PREWARM", "6000");
             map.put("DM_VK_MID_DRAWS", "256");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else if ("balanced".equals(profile)) {
             map.put("DM_OPMODE", "0");
+            map.put("DM_VK_FB_SCALE", mid ? "80" : "100");
             map.put("DM_VK_PREWARM", "3000");
             map.put("DM_VK_MID_DRAWS", "256");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else {
             map.put("DM_OPMODE", "0");
+            map.put("DM_VK_FB_SCALE", "75");
             map.put("DM_VK_PREWARM", "1500");
             map.put("DM_VK_MID_DRAWS", "512");
             if (adreno) map.put("DM_VK_GPU_FLOOR", "100");
             map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
         }
-        map.put("DM_AUTOTUNED", "2");
+        map.put("DM_AUTOTUNED", "3");
         saveEnv(c, map);
     }
 
@@ -195,7 +201,9 @@ public final class GameSettings {
         Map<String, String> map = loadEnv(c);
         Boolean mali = detectMaliGpu(c);
         boolean adreno = (mali != null && !mali);
+        String fbScale = isEntryMidGpu(c) ? "75" : "100";
         map.put("DM_OPMODE", "0");
+        map.put("DM_VK_FB_SCALE", fbScale);
         map.put("DM_PRESENT_HZ", "");
         map.put("DM_VK_MALI_FP16", "1");
         map.put("DM_VK_CLEAR_LOADOP", "1");
@@ -208,7 +216,7 @@ public final class GameSettings {
         if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         else map.remove("DM_VK_GPU_FLOOR");
         map.put("DM_SPV_PRECISE", "1");
-        map.put("DM_AUTOTUNED", "2");
+        map.put("DM_AUTOTUNED", "3");
 
         int[] masks = detectCpuClusterMasks();
         int bigMask = masks[0], littleMask = masks[1];
@@ -227,7 +235,45 @@ public final class GameSettings {
         String cpuTag = (bigMask != 0)
                 ? ("0x" + Integer.toHexString(bigMask) + "/0x" + Integer.toHexString(littleMask))
                 : "Auto";
-        return gpuTag + " • CPU " + cpuTag + " • 720p";
+        return gpuTag + " • CPU " + cpuTag + " • " + fbScale + "%";
+    }
+
+    /** Returns true for entry/midrange GPUs (Adreno 610/5xx, Mali-G52/G57, PowerVR) that benefit from 75% FB scale. */
+    private static boolean isEntryMidGpu(Context c) {
+        String gpu = vkInfo(c).get("gpu");
+        String gl = gpu != null ? gpu.toLowerCase(java.util.Locale.ROOT) : "";
+        if (!gl.isEmpty()) {
+            if (gl.contains("610") || gl.contains("612") || gl.contains("616") || gl.contains("618") || gl.contains("619")
+                    || gl.contains("adreno (tm) 5") || gl.contains("adreno 5")
+                    || gl.contains("mali-g5") || gl.contains("mali-g71") || gl.contains("mali-g72")
+                    || gl.contains("powervr")) {
+                return true;
+            }
+            if (gl.contains("adreno (tm) 7") || gl.contains("adreno (tm) 8") || gl.contains("adreno 650")
+                    || gl.contains("adreno (tm) 650") || gl.contains("adreno (tm) 660") || gl.contains("mali-g78")
+                    || gl.contains("mali-g710") || gl.contains("mali-g715") || gl.contains("immortalis")) {
+                return false;
+            }
+        }
+        String soc = android.os.Build.VERSION.SDK_INT >= 31 && android.os.Build.SOC_MODEL != null
+                ? android.os.Build.SOC_MODEL : "";
+        String hw = ((android.os.Build.HARDWARE != null ? android.os.Build.HARDWARE : "") + " "
+                + (android.os.Build.BOARD != null ? android.os.Build.BOARD : "") + " " + soc)
+                .toLowerCase(java.util.Locale.ROOT);
+        if (hw.contains("bengal") || hw.contains("khaje") || hw.contains("trinket")
+                || hw.contains("sm6225") || hw.contains("sm6115")
+                || hw.contains("mt6768") || hw.contains("mt6769") || hw.contains("mt6765") || hw.contains("mt6785")) {
+            return true;
+        }
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                if (mi.totalMem > 0 && mi.totalMem <= (4500L << 20)) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     /** Returns true for Mali, false for Adreno/Qualcomm/PowerVR/Xclipse, or null to let native Vulkan auto-detect. */

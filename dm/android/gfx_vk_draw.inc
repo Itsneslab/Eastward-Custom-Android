@@ -1285,7 +1285,7 @@ static VkRenderPass rp_get_op(const rp_key *k, uint32_t clr) {
     return rp;
 }
 static VkRenderPass rp_get(const rp_key *k) { return rp_get_op(k, 0); }
-static struct { int active, layered; VkRenderPass rp; rp_key key; uint32_t w, h, layers; VkFramebuffer fb; vtex *cv[8], *dv; uint32_t clv[8], cly[8];
+static struct { int active, layered; VkRenderPass rp; rp_key key; uint32_t w, h, vw, vh, layers; VkFramebuffer fb; vtex *cv[8], *dv; uint32_t clv[8], cly[8];
                 uint8_t *snap[8]; size_t snap_cap[8], snap_n[8]; uint8_t *snap_dst[8]; VkImage snap_img[8];
                 uint32_t pend_clr; VkClearColorValue pend_cc[8]; float pend_d; uint32_t pend_s; } P;   // snap: a linear target's guest bytes at rp_prepare (lsnap_take), until its write-back takes them
 static uint64_t g_passes, g_loadop_clears;
@@ -1630,7 +1630,7 @@ static int rp_prepare_(int layered) {
     lsnap_drop_all();   // an earlier rp_prepare's that no pass used
     if (!R.has_rt) { RED_ONCE(83, "draw with no render target set"); return 0; }
     memset(P.cv, 0, sizeof P.cv); P.dv = NULL; memset(g_bcrt_pend, 0, sizeof g_bcrt_pend); g_dup_mask = 0;
-    rp_key k; memset(&k, 0, sizeof k); VkImageView views[9]; memset(views, 0, sizeof views); uint32_t nv = 0, w = UINT32_MAX, h = UINT32_MAX, layers = UINT32_MAX; k.samples = 1;
+    rp_key k; memset(&k, 0, sizeof k); VkImageView views[9]; memset(views, 0, sizeof views); uint32_t nv = 0, w = UINT32_MAX, h = UINT32_MAX, vw = UINT32_MAX, vh = UINT32_MAX, layers = UINT32_MAX; k.samples = 1;
     VkImageView cvw[8] = {0}, dvw = VK_NULL_HANDLE;   // by slot, then the depth view: views[] in attachment order once slot 0 may be filled (slot0_fill_on)
     k.ncolor = (uint32_t)(R.rt.n > 8 ? 8 : R.rt.n);
     for (uint32_t i = 0; i < k.ncolor; i++) {
@@ -1646,6 +1646,8 @@ static int rp_prepare_(int layered) {
             k.color[i] = sh->fmt; k.samples = sh->samples; cvw[i] = iv; nv++; P.cv[i] = sh; P.clv[i] = 0; P.cly[i] = 0; rt_note(sh);
             g_bcrt_pend[i].base = v; g_bcrt_pend[i].sh = sh; g_bcrt_pend[i].lv = lv; g_bcrt_pend[i].ly = ly;
             if (sh->w < w) w = sh->w; if (sh->h < h) h = sh->h;
+            uint32_t svw = sh->vw ? sh->vw : sh->w, svh = sh->vh ? sh->vh : sh->h;
+            if (svw < vw) vw = svw; if (svh < vh) vh = svh;
             continue;
         }
         // in the format of the target's view: Super Mario Bros. Wonder's last pass writes its RGBA8 window texture through an RGBA8_SRGB view, and in the image's
@@ -1658,6 +1660,8 @@ static int rp_prepare_(int layered) {
         k.color[i] = af; k.samples = v->samples; cvw[i] = iv; nv++; P.cv[i] = v; P.clv[i] = lv; P.cly[i] = ly; rt_note(v);
         lsnap_take((int)i, v, lv, ly);   // a linear target: its guest bytes now, which its write-back diffs against
         uint32_t lw = v->w >> lv ? v->w >> lv : 1, lh = v->h >> lv ? v->h >> lv : 1; if (lw < w) w = lw; if (lh < h) h = lh;
+        uint32_t bvw = v->vw ? v->vw : v->w, bvh = v->vh ? v->vh : v->h;
+        uint32_t lvw = bvw >> lv ? bvw >> lv : 1, lvh = bvh >> lv ? bvh >> lv : 1; if (lvw < vw) vw = lvw; if (lvh < vh) vh = lvh;
     }
     if (R.rt.depth) {
         vtex *v = vt_get_w(R.rt.depth);
@@ -1668,7 +1672,9 @@ static int rp_prepare_(int layered) {
             uint32_t nl = layered ? rt_layers(v, dv, lv, ly) : 1;
             g_view_slice = 1; VkImageView iv = view_get(v, nl > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D, lv, 1, ly, nl, v->aspect, NULL); g_view_slice = 0;
             if (iv && nl < layers) layers = nl;
-            if (iv) { k.depth = v->fmt; k.samples = v->samples; dvw = iv; nv++; P.dv = v; rt_note(v); uint32_t lw = v->w >> lv ? v->w >> lv : 1, lh = v->h >> lv ? v->h >> lv : 1; if (lw < w) w = lw; if (lh < h) h = lh; }
+            if (iv) { k.depth = v->fmt; k.samples = v->samples; dvw = iv; nv++; P.dv = v; rt_note(v); uint32_t lw = v->w >> lv ? v->w >> lv : 1, lh = v->h >> lv ? v->h >> lv : 1; if (lw < w) w = lw; if (lh < h) h = lh;
+                uint32_t bvw = v->vw ? v->vw : v->w, bvh = v->vh ? v->vh : v->h;
+                uint32_t lvw = bvw >> lv ? bvw >> lv : 1, lvh = bvh >> lv ? bvh >> lv : 1; if (lvw < vw) vw = lvw; if (lvh < vh) vh = lvh; }
         }
     }
     if (!nv || w == UINT32_MAX) { RED_ONCE(84, "render targets without an image"); lsnap_drop_all(); return 0; }
@@ -1696,7 +1702,7 @@ static int rp_prepare_(int layered) {
         if (vkCreateFramebuffer(g_vk.dev, &fc, NULL, &fb) != VK_SUCCESS) { RED_ONCE(85, "framebuffer %ux%u failed", w, h); lsnap_drop_all(); return 0; }
         nvn_hm_put(&g_fbs, &fk, fb);
     }
-    P.rp = rp; P.key = k; P.w = w; P.h = h; P.layers = layers; P.fb = fb; P.layered = layered; if (layers > 1) g_layered_passes++;
+    P.rp = rp; P.key = k; P.w = w; P.h = h; P.vw = vw != UINT32_MAX ? vw : w; P.vh = vh != UINT32_MAX ? vh : h; P.layers = layers; P.fb = fb; P.layered = layered; if (layers > 1) g_layered_passes++;
     return 1;
 }
 static int rp_prepare(void) { return rp_prepare_(0); }
@@ -3577,17 +3583,29 @@ static void pipe_key_build(pipe_key *k, int prim) {
 }
 // a draw's dynamic state: the viewport (see the file header for the origin), the scissor, stencil, blend constants, depth bias (vk_draw_, gfx_vk_mesh.inc vk_mesh_draw_);
 // *ov / *osc: the viewport and scissor set, for the dump's log; rd: the 1 × 1 pass without attachments of a discarded draw (rd_draw: rasterization is off)
+static VkRect2D pass_scissor_rect(void) {
+    VkRect2D sc = {{0, 0}, {P.w, P.h}};
+    if (R.has_sc) {
+        float sx = (P.vw && P.vw != P.w) ? (float)P.w / (float)P.vw : 1.0f;
+        float sy = (P.vh && P.vh != P.h) ? (float)P.h / (float)P.vh : 1.0f;
+        int x0 = (int)floorf((float)R.sc.x * sx), y0 = (int)floorf((float)R.sc.y * sy);
+        int x1 = (int)ceilf((float)((int64_t)R.sc.x + R.sc.w) * sx), y1 = (int)ceilf((float)((int64_t)R.sc.y + R.sc.h) * sy);
+        if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+        if (x1 > (int)P.w) x1 = (int)P.w; if (y1 > (int)P.h) y1 = (int)P.h;
+        sc = (VkRect2D){{x0, y0}, {(uint32_t)(x1 > x0 ? x1 - x0 : 0), (uint32_t)(y1 > y0 ? y1 - y0 : 0)}};
+    }
+    return sc;
+}
 static void draw_dyn_state(VkCommandBuffer c, VkViewport *ov, VkRect2D *osc, int rd) {
-    float vx = 0, vy = 0, vw = (float)P.w, vh = (float)P.h; if (D.has_vp) { vx = D.vp[0][0]; vy = D.vp[0][1]; vw = D.vp[0][2]; vh = D.vp[0][3]; }
+    float sx = (P.vw && P.vw != P.w) ? (float)P.w / (float)P.vw : 1.0f;
+    float sy = (P.vh && P.vh != P.h) ? (float)P.h / (float)P.vh : 1.0f;
+    float vx = 0, vy = 0, vw = (float)P.w, vh = (float)P.h;
+    if (D.has_vp) { vx = D.vp[0][0] * sx; vy = D.vp[0][1] * sy; vw = D.vp[0][2] * sx; vh = D.vp[0][3] * sy; }
     float n = D.dr[0] < 0 ? 0 : D.dr[0] > 1 ? 1 : D.dr[0], f = D.dr[1] < 0 ? 0 : D.dr[1] > 1 ? 1 : D.dr[1];
     VkViewport v = g_origin_ll ? (VkViewport){vx, vy, vw, vh, n, f} : (VkViewport){vx, vy + vh, vw, -vh, n, f};
     if (rd) v = (VkViewport){0, 0, 1, 1, 0, 1};
     if (!bf_same(c, BF_VP, &g_bf.vp, &v, sizeof v)) vkCmdSetViewport(c, 0, 1, &v);
-    VkRect2D sc = {{0, 0}, {P.w, P.h}};
-    if (R.has_sc) { int x0 = R.sc.x < 0 ? 0 : R.sc.x, y0 = R.sc.y < 0 ? 0 : R.sc.y; int64_t x1 = (int64_t)R.sc.x + R.sc.w, y1 = (int64_t)R.sc.y + R.sc.h;
-        if (x1 > (int64_t)P.w) x1 = P.w; if (y1 > (int64_t)P.h) y1 = P.h;
-        sc = (VkRect2D){{x0, y0}, {(uint32_t)(x1 > x0 ? x1 - x0 : 0), (uint32_t)(y1 > y0 ? y1 - y0 : 0)}}; }
-    if (rd) sc = (VkRect2D){{0, 0}, {1, 1}};
+    VkRect2D sc = rd ? (VkRect2D){{0, 0}, {1, 1}} : pass_scissor_rect();
     if (!bf_same(c, BF_SC, &g_bf.sc, &sc, sizeof sc)) vkCmdSetScissor(c, 0, 1, &sc);
     if (!bf_same(c, BF_BC, g_bf.bc, D.blend_color, sizeof g_bf.bc)) vkCmdSetBlendConstants(c, D.blend_color);
     if (!bf_same(c, BF_CM0, &g_bf.cm[0], &D.st_vmask[0], 4)) vkCmdSetStencilCompareMask(c, VK_STENCIL_FACE_FRONT_BIT, D.st_vmask[0]);
@@ -3927,13 +3945,7 @@ static const uint32_t CLEAR_VS[] = {
 }, CLEAR_FS[] = {
 #include "shaders/clear_frag.inc"
 };
-static VkRect2D clear_rect(void) {   // the scissor on the pass's targets (window rows are memory rows in both origin modes, as for draws)
-    VkRect2D sc = {{0, 0}, {P.w, P.h}};
-    if (R.has_sc) { int x0 = R.sc.x < 0 ? 0 : R.sc.x, y0 = R.sc.y < 0 ? 0 : R.sc.y; int64_t x1 = (int64_t)R.sc.x + R.sc.w, y1 = (int64_t)R.sc.y + R.sc.h;
-        if (x1 > (int64_t)P.w) x1 = P.w; if (y1 > (int64_t)P.h) y1 = P.h;
-        sc = (VkRect2D){{x0, y0}, {(uint32_t)(x1 > x0 ? x1 - x0 : 0), (uint32_t)(y1 > y0 ? y1 - y0 : 0)}}; }
-    return sc;
-}
+static VkRect2D clear_rect(void) { return pass_scissor_rect(); }
 typedef struct { VkRenderPass rp; uint32_t ncolor, idx, mask, samples, stencil_mask, depth; } cpk_t;
 static nvn_hmap g_clr_pipes = {.klen = sizeof(cpk_t)};
 static VkPipelineLayout g_clr_pl; static VkShaderModule g_clr_vs, g_clr_fs;

@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1.5", 11, ACCENT, true));
+        brandCol.addView(text(a, "Custom v1.1.6", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -453,6 +453,21 @@ public final class GameMenu {
             {"1", UiText.tr(a, "Docked 1080p", "1080p Tajam"),
                     UiText.tr(a, "Sharper picture at 1920x1080 for flagship SoCs",
                             "Gambar lebih tajam 1920x1080 untuk HP kelas flagship")}
+        });
+
+        envChoiceCard(a, UiText.tr(a, "GPU Render Scale", "Skala Render GPU"), "DM_VK_FB_SCALE", "100", new String[][]{
+            {"100", UiText.tr(a, "100% Native", "100% Asli"),
+                    UiText.tr(a, "Full native pixel count; best for flagship GPUs",
+                            "Resolusi penuh tanpa skala; untuk GPU flagship")},
+            {"80", UiText.tr(a, "80% Crisp (-36% GPU load)", "80% Tajam (-36% beban GPU)"),
+                    UiText.tr(a, "Sharp visual balance with lower fillrate load",
+                            "Keseimbangan tajam dan ringan di GPU")},
+            {"75", UiText.tr(a, "75% Smooth 540p (-44% GPU load)", "75% Lancar 540p (-44% beban GPU)"),
+                    UiText.tr(a, "Recommended for Snapdragon 6xx & Helio Gxx GPUs for 40-60 fps",
+                            "Direkomendasikan untuk Adreno 610 & Mali-G52 agar tembus 40-60 fps")},
+            {"67", UiText.tr(a, "67% Fast 480p (-55% GPU load)", "67% Ngebut 480p (-55% beban GPU)"),
+                    UiText.tr(a, "Maximum GPU headroom on heavy outdoor areas",
+                            "Ringankan beban GPU maksimal di area berat")}
         });
 
         envChoiceCard(a, UiText.tr(a, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "", new String[][]{

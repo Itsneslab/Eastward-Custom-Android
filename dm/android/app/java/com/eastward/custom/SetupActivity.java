@@ -184,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.5");
+        verTag.setText("v1.1.6");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
@@ -511,6 +511,9 @@ public final class SetupActivity extends Activity {
                 new String[]{UiText.tr(this, "720p Handheld", "720p Ringan"),
                         UiText.tr(this, "1080p Docked", "1080p Tajam")},
                 new String[]{"0", "1"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Render Scale", "Skala Render GPU"), "DM_VK_FB_SCALE", "100",
+                new String[]{"100% Native", "80% Crisp", "75% (540p)", "67% (480p)"},
+                new String[]{"100", "80", "75", "67"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Frame Pacing", "Sinkronisasi Frame"), "DM_PRESENT_HZ", "",
                 new String[]{UiText.tr(this, "60 Hz Sync", "60 Hz Normal"),
                         UiText.tr(this, "Uncapped", "Tanpa Batas")},
