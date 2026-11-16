@@ -184,7 +184,7 @@ public final class SetupActivity extends Activity {
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.4");
+        verTag.setText("v1.1.5");
         verTag.setTextColor(C_ACCENT);
         verTag.setTextSize(11);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
@@ -523,6 +523,12 @@ public final class SetupActivity extends Activity {
         addChoiceRow(cfgCard, UiText.tr(this, "CPU Boost (UClamp)", "Boost CPU (UClamp)"), "DM_VK_UCLAMP_MIN", "0",
                 new String[]{UiText.tr(this, "Off", "Mati"), "512", "800", "1024"},
                 new String[]{"0", "512", "800", "1024"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Adreno GPU Clock Boost", "Boost Clock GPU Adreno"), "DM_VK_GPU_FLOOR", "0",
+                new String[]{UiText.tr(this, "Off", "Mati"), "85%", "Max (100%)"},
+                new String[]{"0", "85", "100"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Render Pass Batch", "Batch Render Pass"), "DM_VK_MID_DRAWS", "64",
+                new String[]{"64 (Std)", "256 (TBDR)", "512 (Max)"},
+                new String[]{"64", "256", "512"}, dp);
 
         TextView vkSec = infoLine(cfgCard, UiText.tr(this, "Vulkan & Graphics Toggles", "Pengaturan Toggle Vulkan & Grafis"), dp);
         vkSec.setTextColor(C_TEXT);
@@ -531,9 +537,14 @@ public final class SetupActivity extends Activity {
 
         LinearLayout togPanel = panel(dp);
         addToggleRow(togPanel,
-                UiText.tr(this, "Mali FP16 Optimize", "Optimasi Mali FP16"),
-                UiText.tr(this, "Faster 16-bit shader math on Mali GPUs", "Percepat hitung shader 16-bit di GPU Mali"),
+                UiText.tr(this, "FP16 Shader Fast Math", "Optimasi Shader FP16"),
+                UiText.tr(this, "Faster 16-bit fragment math on Mali & Adreno GPUs", "Percepat hitung shader fragment 16-bit di Mali & Adreno"),
                 "DM_VK_MALI_FP16", true, dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Threaded Vulkan Recorder", "Perekam Vulkan Multi-Thread"),
+                UiText.tr(this, "Offload vkCmd calls to worker thread on 4+ core CPUs", "Pisahkan perekaman perintah Vulkan ke thread terpisah"),
+                "DM_VK_RECORDER", false, dp);
         togPanel.addView(divider(dp));
         addToggleRow(togPanel,
                 UiText.tr(this, "TBDR Clear LoadOp", "Tile Clear Cepat (TBDR)"),

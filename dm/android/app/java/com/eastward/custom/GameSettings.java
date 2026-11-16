@@ -112,11 +112,15 @@ public final class GameSettings {
         map.put("DM_PRESENT_HZ", "");
         map.put("DM_VK_CLEAR_LOADOP", "1");
         Boolean mali = detectMaliGpu(c);
-        if (mali != null) map.put("DM_VK_MALI_FP16", mali ? "1" : "0");
+        boolean adreno = (mali != null && !mali);
+        map.put("DM_VK_MALI_FP16", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
         map.put("DM_VK_PREWARM", "3000");
         map.put("DM_VK_PRESENT_TIMING", "1");
+        map.put("DM_VK_MID_DRAWS", "256");
+        map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
+        if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         map.put("DM_SPV_PRECISE", "1");
         int[] masks = detectCpuClusterMasks();
         if (masks[0] != 0 && masks[1] != 0) {
@@ -124,41 +128,67 @@ public final class GameSettings {
             map.put("DM_VK_PIN_DONE", Integer.toHexString(masks[1]));
         }
         map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
-        map.put("DM_AUTOTUNED", "1");
+        map.put("DM_AUTOTUNED", "2");
         saveEnv(c, map);
     }
 
     /** Ensure first launch auto-configures chipset-appropriate CPU/GPU flags once without overwriting user tweaks later. */
     public static void ensureAutoTuned(Context c) {
         Map<String, String> map = loadEnv(c);
-        if (!"1".equals(map.get("DM_AUTOTUNED"))) {
+        String ver = map.get("DM_AUTOTUNED");
+        if (!"1".equals(ver) && !"2".equals(ver)) {
             autoTuneDevice(c);
+        } else if ("1".equals(ver)) {
+            // Non-destructive upgrade from v1.1.3/v1.1.4 to v1.1.5: enable newly exposed mobile GPU/CPU throughput opts.
+            Boolean mali = detectMaliGpu(c);
+            boolean adreno = (mali != null && !mali);
+            map.put("DM_VK_MALI_FP16", "1");
+            if (!map.containsKey("DM_VK_MID_DRAWS")) map.put("DM_VK_MID_DRAWS", "256");
+            if (!map.containsKey("DM_VK_RECORDER")) {
+                map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
+            }
+            if (adreno && !map.containsKey("DM_VK_GPU_FLOOR")) map.put("DM_VK_GPU_FLOOR", "85");
+            map.put("DM_AUTOTUNED", "2");
+            saveEnv(c, map);
         }
     }
 
     /** Apply a universal performance profile suitable across Snapdragon, MediaTek, and Exynos devices. */
     public static void applyProfile(Context c, String profile) {
         Map<String, String> map = loadEnv(c);
+        Boolean mali = detectMaliGpu(c);
+        boolean adreno = (mali != null && !mali);
+        boolean multi = Runtime.getRuntime().availableProcessors() >= 4;
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
+        map.put("DM_VK_MALI_FP16", "1");
+        map.put("DM_VK_RECORDER", multi ? "1" : "0");
         map.put("DM_SPV_PRECISE", "1");
         map.put("DM_PRESENT_HZ", "");
         if ("quality".equals(profile)) {
             map.put("DM_OPMODE", "1");
             map.put("DM_VK_PREWARM", "6000");
+            map.put("DM_VK_MID_DRAWS", "256");
+            if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else if ("balanced".equals(profile)) {
             map.put("DM_OPMODE", "0");
             map.put("DM_VK_PREWARM", "3000");
+            map.put("DM_VK_MID_DRAWS", "256");
+            if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
         } else {
             map.put("DM_OPMODE", "0");
             map.put("DM_VK_PREWARM", "1500");
+            map.put("DM_VK_MID_DRAWS", "512");
+            if (adreno) map.put("DM_VK_GPU_FLOOR", "100");
+            map.put("DM_VK_UCLAMP_MIN", android.os.Build.VERSION.SDK_INT >= 30 ? "800" : "0");
         }
+        map.put("DM_AUTOTUNED", "2");
         saveEnv(c, map);
     }
 
     /**
-     * Auto-tune CPU core affinity, GPU FP16 optimization, and Android UClamp boost
+     * Auto-tune CPU core affinity, GPU FP16 optimization, KGSL clock floor, and Android UClamp boost
      * based on the host device's actual CPU cluster frequencies, Vulkan GPU, and OS version.
      */
     public static String autoTuneDevice(Context c) {
@@ -167,15 +197,18 @@ public final class GameSettings {
         boolean adreno = (mali != null && !mali);
         map.put("DM_OPMODE", "0");
         map.put("DM_PRESENT_HZ", "");
-        if (mali != null) map.put("DM_VK_MALI_FP16", mali ? "1" : "0");
-        else map.remove("DM_VK_MALI_FP16");
+        map.put("DM_VK_MALI_FP16", "1");
         map.put("DM_VK_CLEAR_LOADOP", "1");
         map.put("DM_VK_SET_REUSE", "1");
         map.put("DM_VK_ASYNC_PIPE", "1");
         map.put("DM_VK_PREWARM", "1500");
         map.put("DM_VK_PRESENT_TIMING", "1");
+        map.put("DM_VK_MID_DRAWS", "256");
+        map.put("DM_VK_RECORDER", Runtime.getRuntime().availableProcessors() >= 4 ? "1" : "0");
+        if (adreno) map.put("DM_VK_GPU_FLOOR", "85");
+        else map.remove("DM_VK_GPU_FLOOR");
         map.put("DM_SPV_PRECISE", "1");
-        map.put("DM_AUTOTUNED", "1");
+        map.put("DM_AUTOTUNED", "2");
 
         int[] masks = detectCpuClusterMasks();
         int bigMask = masks[0], littleMask = masks[1];

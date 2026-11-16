@@ -108,7 +108,7 @@ target_include_directories(dmcore PUBLIC
   ${GEN}/${GAME} ${GEN} ${DM}/third_party/libvpx ${DM}/third_party/stb_vorbis)
 # x18 holds the guest thread's slot block (dm.h dm_slot_get): the compiler must never use it (Android reserves it by default; stated anyway)
 target_compile_options(dmcore PRIVATE
-  $<$<COMPILE_LANGUAGE:C>:-include dm_android.h -std=gnu11 -O1 -g -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
+  $<$<COMPILE_LANGUAGE:C>:-include dm_android.h -std=gnu11 -O2 -g -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable
   -Wno-format -Wno-deprecated-declarations -Wno-gnu-folding-constant -Wno-multichar -Wno-four-char-constants -Wno-unknown-pragmas -Wno-missing-braces>
   -ffixed-x18 -fvisibility=hidden -fPIC -march=armv8-a)
 target_compile_definitions(dmcore PRIVATE DM_ANDROID=1)
@@ -119,7 +119,7 @@ set(DM_LIBS vpx log android nativewindow aaudio mediandk m dl)   # nativewindow:
 set(GLUE ${ANDROID_NDK}/sources/android/native_app_glue)
 add_library(dmhost_app SHARED $<TARGET_OBJECTS:dmcore> ${CMAKE_CURRENT_SOURCE_DIR}/front_android.c ${CMAKE_CURRENT_SOURCE_DIR}/nvn_demo.c ${GLUE}/android_native_app_glue.c)
 target_include_directories(dmhost_app PRIVATE $<TARGET_PROPERTY:dmcore,INTERFACE_INCLUDE_DIRECTORIES> ${GLUE})
-target_compile_options(dmhost_app PRIVATE -include dm_android.h -ffixed-x18 -O1 -g -Wall)
+target_compile_options(dmhost_app PRIVATE -include dm_android.h -ffixed-x18 -O2 -g -Wall)
 target_link_libraries(dmhost_app ${DM_LIBS} jnigraphics)
 target_link_options(dmhost_app PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384 -u ANativeActivity_onCreate)
 set_target_properties(dmhost_app PROPERTIES OUTPUT_NAME dmhost_${GAME})
@@ -131,7 +131,7 @@ target_link_options(nxloader PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=163
 add_executable(dmhost_cli $<TARGET_OBJECTS:dmcore> ${CMAKE_CURRENT_SOURCE_DIR}/front_cli.c ${CMAKE_CURRENT_SOURCE_DIR}/nvn_demo.c)
 set_target_properties(dmhost_cli PROPERTIES OUTPUT_NAME dmhost)
 target_include_directories(dmhost_cli PRIVATE $<TARGET_PROPERTY:dmcore,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_options(dmhost_cli PRIVATE -include dm_android.h -ffixed-x18 -O1 -g -Wall)
+target_compile_options(dmhost_cli PRIVATE -include dm_android.h -ffixed-x18 -O2 -g -Wall)
 target_link_libraries(dmhost_cli ${DM_LIBS})
 target_link_options(dmhost_cli PRIVATE -Wl,-z,max-page-size=16384 -Wl,--error-limit=0)
 

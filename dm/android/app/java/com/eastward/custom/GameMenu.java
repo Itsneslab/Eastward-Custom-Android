@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "Custom v1.1.4", 11, ACCENT, true));
+        brandCol.addView(text(a, "Custom v1.1.5", 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -380,9 +380,9 @@ public final class GameMenu {
                     if (pad != null) pad.fpsSet(checked);
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
-        envToggleCard(a, UiText.tr(a, "Mali FP16 Fast Math", "Mali FP16 Fast Math"), "DM_VK_MALI_FP16", true,
-                UiText.tr(a, "Enable for Mali / Dimensity / Helio GPUs; disable on Adreno if preferred",
-                        "Aktifkan untuk GPU Mali / MediaTek / Exynos; matikan di Adreno jika tidak perlu"));
+        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
+                UiText.tr(a, "Speeds up fragment shaders on Mali & Adreno GPUs; turn off if visual glitches appear",
+                        "Percepat shader fragment di GPU Mali & Adreno; matikan jika muncul glitch visual"));
     }
 
     private static void buildControls(Activity a) {
@@ -481,10 +481,36 @@ public final class GameMenu {
                             "Minta clock CPU tertinggi; lebih hangat & boros baterai")}
         });
 
+        envChoiceCard(a, UiText.tr(a, "Adreno GPU Clock Boost", "Boost Clock GPU Adreno"), "DM_VK_GPU_FLOOR", "0", new String[][]{
+            {"0", UiText.tr(a, "Off", "Mati"),
+                    UiText.tr(a, "Let Adreno GMU scale GPU clock dynamically",
+                            "Biarkan governor Adreno mengatur clock GPU otomatis")},
+            {"85", UiText.tr(a, "High Floor (85%)", "Floor Tinggi (85%)"),
+                    UiText.tr(a, "Prevents Adreno downclocking between CPU chunks (Snapdragon only)",
+                            "Cegah clock Adreno turun di sela chunk CPU (khusus Snapdragon)")},
+            {"100", UiText.tr(a, "Max Lock (100%)", "Kunci Maksimal (100%)"),
+                    UiText.tr(a, "Request peak Adreno KGSL clock; warmer battery",
+                            "Minta clock tertinggi KGSL Adreno; baterai lebih hangat")}
+        });
+
         heading(a, UiText.tr(a, "GPU & Shader Flags", "Pengaturan GPU & Shader"));
-        envToggleCard(a, UiText.tr(a, "Mali FP16 Fast Math", "Mali FP16 Fast Math"), "DM_VK_MALI_FP16", true,
-                UiText.tr(a, "Speeds up shaders on Mali GPUs; turn off on Adreno/Turnip",
-                        "Ringankan shader di GPU Mali; matikan di HP Snapdragon Adreno/Turnip"));
+        envChoiceCard(a, UiText.tr(a, "Render Pass Batch", "Batch Render Pass"), "DM_VK_MID_DRAWS", "64", new String[][]{
+            {"64", UiText.tr(a, "Standard (64)", "Standar (64)"),
+                    UiText.tr(a, "Default split after 64 draws",
+                            "Pecah render pass standar tiap 64 draw")},
+            {"256", UiText.tr(a, "TBDR Tuned (256)", "TBDR Optimal (256)"),
+                    UiText.tr(a, "Reduces tile memory reloads on Adreno/Mali GPUs",
+                            "Kurangi reload tile GMEM di GPU mobile")},
+            {"512", UiText.tr(a, "Max Batch (512)", "Batch Maksimal (512)"),
+                    UiText.tr(a, "Minimum pass splits for peak throughput",
+                            "Minimalisir pemecahan render pass untuk FPS maksimal")}
+        });
+        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
+                UiText.tr(a, "Speeds up 16-bit fragment math on Mali & Adreno; turn off if artifacts appear",
+                        "Percepat hitung fragment 16-bit di Mali & Adreno; matikan jika ada glitch"));
+        envToggleCard(a, UiText.tr(a, "Threaded Vulkan Recorder", "Perekam Vulkan Multi-Thread"), "DM_VK_RECORDER", false,
+                UiText.tr(a, "Offloads vkCmd recording to a dedicated worker thread",
+                        "Jalankan perekaman perintah Vulkan di thread terpisah"));
         envToggleCard(a, UiText.tr(a, "TBDR Clear LoadOp", "TBDR Clear LoadOp"), "DM_VK_CLEAR_LOADOP", true,
                 UiText.tr(a, "Fast tile clear; recommended for both Adreno and Mali",
                         "Clear tile cepat untuk GPU mobile (Adreno & Mali)"));
