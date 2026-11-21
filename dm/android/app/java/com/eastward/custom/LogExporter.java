@@ -113,6 +113,9 @@ public final class LogExporter {
         sb.append("Device: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
                 .append(" (").append(Build.DEVICE).append(")\n");
         sb.append("Hardware/Board: ").append(Build.HARDWARE).append(" / ").append(Build.BOARD).append('\n');
+        if (Build.VERSION.SDK_INT >= 31 && Build.SOC_MODEL != null && !Build.SOC_MODEL.isEmpty()) {
+            sb.append("SoC: ").append(Build.SOC_MODEL).append('\n');
+        }
         sb.append("Android: ").append(Build.VERSION.RELEASE)
                 .append(" (API ").append(Build.VERSION.SDK_INT).append(")\n");
         sb.append("ABIs: ").append(Arrays.toString(Build.SUPPORTED_ABIS)).append('\n');
@@ -137,8 +140,16 @@ public final class LogExporter {
 
         File gameDir = GameSettings.gameDir(c);
         sb.append("Game ready: ").append(GameSettings.isReady(c)).append('\n');
+        String gv = GameSettings.installedGameVersion(c);
+        if (!gv.isEmpty()) sb.append("Game version: ").append(gv).append('\n');
+        String upd = GameSettings.installedUpdateSummary(c);
+        if (upd != null && !upd.isEmpty()) sb.append("Update summary: ").append(upd).append('\n');
         sb.append("DLC (aoc/) present: ").append(new File(gameDir, "aoc").isDirectory()).append('\n');
         sb.append("RomFS present: ").append(new File(gameDir, "RomFS").isDirectory()).append('\n');
+        sb.append("Mod files: ").append(GameSettings.countModFiles(c)).append('\n');
+        sb.append("Screen mode: ").append("1".equals(GameSettings.get(c, "DM_SCREEN_MODE", "0")) ? "Wide Full (1)" : "16:9 Fit (0)").append('\n');
+        String gpuName = GameSettings.gpuDisplayName(c);
+        if (gpuName != null && !gpuName.isEmpty()) sb.append("Detected GPU: ").append(gpuName).append('\n');
         sb.append("Active driver: ").append(GameSettings.driverLabel(c)).append('\n');
 
         Map<String, String> vk = GameSettings.vkInfo(c);

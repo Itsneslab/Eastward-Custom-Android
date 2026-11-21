@@ -141,6 +141,7 @@ static int open_system(void) {
 // (liblinkernsbypass) would patch the linker for nothing.
 //   Adreno: Turnip drives Qualcomm's KGSL. Only a missing node counts: one SELinux keeps from a stat is still there
 static int adreno(void) { struct stat st; return !stat("/dev/kgsl-3d0", &st) || errno != ENOENT; }
+static int mali(void) { struct stat st; return !stat("/dev/mali0", &st) || errno != ENOENT; }
 //   Xclipse: RADV built for it (radv-xclipse, as Eden loads it) drives Samsung's kernel GPU driver, sgpu, AMD's amdgpu adapted, through a DRM render node, which apps
 //   may open (their Vulkan driver does). Told as RADV tells its GPU (radv_physical_device_try_create): the node's DRM driver name is "amdgpu", which sgpu keeps (sysfs
 //   names its platform driver sgpu). Other render nodes have other names (the Flip 7 also has an exynos-drm one, for the display)
@@ -281,7 +282,7 @@ void vk_driver_lost(VkResult r) { if (g_name[0]) { mark_bad(1); record("device l
 int vk_driver_load(void) {
     const char *drv = getenv("DM_VK_DRIVER");
     int on = drv && *drv;
-    const char *gpu = !on ? NULL : adreno() ? "Adreno" : xclipse() ? "Xclipse" : !access("/dev/mali0", F_OK) ? "Mali" : NULL;
+    const char *gpu = !on ? NULL : adreno() ? "Adreno" : xclipse() ? "Xclipse" : mali() ? "Mali" : NULL;
     record_paths(on ? drv : NULL, gpu != NULL);
     if (on && !gpu) {
         LOG("[vk] DM_VK_DRIVER %s: not used, unknown GPU device node: the system's driver runs", drv);

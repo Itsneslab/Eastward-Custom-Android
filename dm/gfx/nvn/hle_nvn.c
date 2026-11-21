@@ -27,6 +27,10 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <errno.h>
+#ifdef __ANDROID__
+#include <sys/resource.h>
+#include <stdatomic.h>
+#endif
 #if TARGET_OS_OSX
 #define DM_MEM_CAP_DEFAULT_GB 24
 #else
@@ -2240,6 +2244,16 @@ static const int *present_crop(const int win[4], int tw, int th, int lc[4]) {
 }
 NVN(nvnQueuePresentTexture, void, NVNqueue *q, NVNwindow *w, int idx) {
     (void)q; win_t *o = (win_t *)w; o->presents++;
+#ifdef __ANDROID__
+    {
+        static _Atomic int g_boosted_tid;
+        int32_t tid = (int32_t)gettid();
+        if (atomic_load_explicit(&g_boosted_tid, memory_order_relaxed) != tid) {
+            atomic_store_explicit(&g_boosted_tid, tid, memory_order_relaxed);
+            setpriority(PRIO_PROCESS, (id_t)tid, -8);
+        }
+    }
+#endif
     dm_ue_cvar_tick();
     dm_ue_dynres_tick();
     if (fps_high()) high_cap_tick();

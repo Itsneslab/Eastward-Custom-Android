@@ -162,14 +162,15 @@ def main():
             nacp = open(os.path.join(ex, 'control.nacp'), 'rb').read()
             tid = struct.unpack_from('<Q', nacp, 0x3038)[0]
             tname = nacp[:0x200].split(b'\0')[0].decode('utf-8', 'replace')
+            tver = nacp[0x3060:0x3070].split(b'\0')[0].decode('utf-8', 'replace').strip()
         except (OSError, struct.error):
-            tid, tname = 0, ''
+            tid, tname, tver = 0, '', ''
         if tid and tid != TITLE_ID:
             raise RuntimeError(f'wrong game: {tname or "unknown"} ({tid:016X}); this app is exclusively for Eastward ({TITLE_HEX})')
 
         with open(os.path.join(exefs, 'main'), 'rb') as f:
             build_id = f.read(0x50)[0x40:0x50].hex()
-        log.write(f'verified Eastward main build ID: {build_id}\n')
+        log.write(f'verified Eastward main build ID: {build_id} version: {tver or "?"}\n')
 
         try:
             os.remove(ready_file)
@@ -179,6 +180,22 @@ def main():
             src_f = os.path.join(ex, fname)
             if os.path.isfile(src_f):
                 shutil.copy2(src_f, os.path.join(a.out, fname))
+
+        ver_file = os.path.join(a.out, 'game_version.txt')
+        with open(ver_file, 'w', encoding='utf-8') as f:
+            f.write(tver or '')
+        upd_file = os.path.join(a.out, 'update_info.txt')
+        if a.update:
+            upd_name = os.path.basename(a.update)
+            if upd_name.startswith('update_'):
+                upd_name = upd_name[len('update_'):]
+            with open(upd_file, 'w', encoding='utf-8') as f:
+                f.write(f'{upd_name}\n{tver}\n')
+        else:
+            try:
+                os.remove(upd_file)
+            except FileNotFoundError:
+                pass
 
         aoc_dst = os.path.join(a.out, 'aoc')
         shutil.rmtree(aoc_dst, ignore_errors=True)

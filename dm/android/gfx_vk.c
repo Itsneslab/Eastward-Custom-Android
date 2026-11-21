@@ -44,6 +44,7 @@
 #include "spv_noptr.h"   // raw global memory through a descriptor array, for drivers that refuse OpConvertUToPtr (gfx_vk_gmem_noptr.inc)
 #include "spv_precise.h"   // Maxwell's FMUL and FADD unfused in the shaders that place vertices (gfx_vk_draw.inc spv_fit_precise)
 #include "spv_mali_fp16.h"   // RelaxedPrecision on safe FP32 fragment ALU/locals on Arm Mali (gfx_vk_draw.inc spv_fit_mali_fp16)
+#include "spv_fast_fx.h"    // In-place OpIsNan guard stripping + 100%-sharpness fast post-FX shaders (gfx_vk_draw.inc spv_fit_fast_fx)
 #include "spv_bind.h"   // a set's far-apart binding numbers made dense, for drivers that size a layout by its highest (gfx_vk_draw.inc sh_get, gfx_vk_lmod.inc lm_code)
 #include "spv_tffrag.h"   // transform feedback captured in the fragment stage on a GPU without vertex-stage storage writes (gfx_vk_draw.inc tf_capture)
 #include "wb_alias.h"   // a binding inside another binding's write-back of the same draw or dispatch (gfx_vk_draw.inc own_alias)
@@ -1430,7 +1431,7 @@ static VkFormat srgb_twin(VkFormat f) {
     }
 }
 // DM_VK_UBWC=0 (env.txt): colour images MUTABLE_FORMAT with no format list, as before (vt_create)
-static int ubwc_on(void) { static int v = -1; if (v < 0) { const char *e = getenv("DM_VK_UBWC"); v = !(e && *e == '0') && g_fmt_list; LOG("[vk] colour images %s", v ? "list their format and its sRGB twin, so Adreno keeps their framebuffer compression (DM_VK_UBWC=0: MUTABLE_FORMAT, any format of the texel size)" : g_fmt_list ? "MUTABLE_FORMAT with no format list (DM_VK_UBWC=0)" : "MUTABLE_FORMAT with no format list (no VK_KHR_image_format_list)"); } return v; }
+static int ubwc_on(void) { static int v = -1; if (v < 0) { const char *e = getenv("DM_VK_UBWC"); int legacy_qcom = g_qcom_driver && g_vk.props.apiVersion < VK_API_VERSION_1_2; v = (e ? (*e != '0') : !legacy_qcom) && g_fmt_list; LOG("[vk] colour images %s", v ? "list their format and its sRGB twin, so Adreno keeps their framebuffer compression (DM_VK_UBWC=0: MUTABLE_FORMAT, any format of the texel size)" : !g_fmt_list ? "MUTABLE_FORMAT with no format list (no VK_KHR_image_format_list)" : (e && *e == '0') ? "MUTABLE_FORMAT with no format list (DM_VK_UBWC=0)" : "MUTABLE_FORMAT with no format list (Qualcomm < Vulkan 1.2 guard)"); } return v; }
 // DM_VK_FB_SCALE=<50-100> (env.txt): internal render-target resolution percentage (100: native).
 // With DM_VK_HD_ONLY=1 (default), 640x360 pixel-art targets stay 100% crisp and only >=1280x720 post-fx/screen targets scale.
 static int fb_scale_pct(void) {
@@ -1487,13 +1488,14 @@ static vtex *vt_create_scaled(const tex_t *t, int allow_scale) {
     if ((t->d.flags & NVN_TEXTURE_FLAGS_IMAGE) && (ff & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) u |= VK_IMAGE_USAGE_STORAGE_BIT;
     v->usage = u;   // STORAGE added later if the texture is bound to an image slot all the same (vt_storage_up)
     uint32_t min_w = hd_only_on() ? 1280u : 640u, min_h = hd_only_on() ? 720u : 360u;
-    if (allow_scale && v->type == VK_IMAGE_TYPE_2D && !conv && v->levels == 1 && v->layers == 1 && v->d == 1 && v->samples == VK_SAMPLE_COUNT_1_BIT
+    if (allow_scale
+        && v->type == VK_IMAGE_TYPE_2D && !conv && v->levels == 1 && v->layers == 1 && v->d == 1 && v->samples == VK_SAMPLE_COUNT_1_BIT
         && !(u & VK_IMAGE_USAGE_STORAGE_BIT) && (u & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT))
         && v->vw >= min_w && v->vh >= min_h) {
         int pct = fb_scale_pct();
         if (pct < 100) {
             uint32_t sw = ((v->vw * (uint32_t)pct + 50u) / 100u + 1u) & ~1u;
-            uint32_t sh = ((v->vh * (uint32_t)pct + 50u) / 100u + 1u) & ~1u;
+            uint32_t sh = ((uint32_t)(((uint64_t)sw * v->vh + v->vw / 2u) / v->vw) + 1u) & ~1u;
             if (sw < 64) sw = 64;
             if (sh < 64) sh = 64;
             v->w = sw; v->h = sh;
@@ -1870,7 +1872,7 @@ static vtex *vt_get_(const tex_t *ct) {
         vtex *s = nvn_hm_get(&g_share, &k);
         if (s) { vt_ref(t->serial, s); s->used = atomic_load(&g_fence); return s; }
     }
-    int can_scale = !pkg && !is_linear(t) && (t->d.flags & (NVN_TEXTURE_FLAGS_COMPRESSIBLE | NVN_TEXTURE_FLAGS_DISPLAY));
+    int can_scale = !pkg && !is_linear(t) && (t->d.flags & NVN_TEXTURE_FLAGS_COMPRESSIBLE);
     if (!(v = vt_create_scaled(t, can_scale))) return NULL;
     v->used = atomic_load(&g_fence); ev_made(v);
     if (pkg) { v->pkg = 1; v->taken = took == 2; if (vt_upload(v, t, 1)) { g_pkg_uploads++; edges_take(v, t); } }
@@ -2863,7 +2865,7 @@ void mtl_mem_stat(unsigned long long frame, unsigned long long mb) { LOG("[vk] f
     if (slot0_fill_on()) LOG("[vk] render passes given a scratch target in their empty colour slot 0: %llu, made with no colour slot as every one was empty: %llu (cumulative; gfx_vk_draw.inc slot0_fill_on)", (unsigned long long)g_slot0_fills, (unsigned long long)g_slot0_none);
     if (layer_pad_on()) LOG("[vk] layered render passes padded past 1 MB of texels with scratch colour slots: %llu (cumulative; gfx_vk_layerpad.inc layer_pad_on)", (unsigned long long)g_layer_pads);
     if (dup_slots_on()) LOG("[vk] render passes attaching an image once that two colour slots name: %llu, draws whose write to the slot left unused was lost: %llu (cumulative; gfx_vk_draw.inc dup_slots)", (unsigned long long)g_dup_passes, (unsigned long long)g_dup_lost);
-    LOG("[vk] render passes coalesced with LOAD_OP_CLEAR: %llu (cumulative; DM_VK_CLEAR_LOADOP)", (unsigned long long)g_loadop_clears);
+    LOG("[vk] render passes coalesced with LOAD_OP_CLEAR: %llu, skipped dead loads with LOAD_OP_DONT_CARE: %llu (cumulative; DM_VK_CLEAR_LOADOP / DM_VK_FAST_LOAD)", (unsigned long long)g_loadop_clears, (unsigned long long)g_loadop_dcs);
     if (stg_stat()) { static unsigned long long f0; static uint64_t a0, r0, s0; uint64_t a = atomic_load(&g_stg_allocs), r = atomic_load(&g_stg_frees), sl = g_sp_slices; double nf = frame > f0 ? (double)(frame - f0) : 1;
       pthread_mutex_lock(&g_sp_mu); int nb = g_sp_nblk, fr = g_sp_nfree; pthread_mutex_unlock(&g_sp_mu);
       LOG("[vk] staging over the last %llu frames: vkAllocateMemory %.2f and vkFreeMemory %.2f a frame, %.1f slices a frame cut from the pool%s; pool blocks %d of %d now (%d free, %u MB each), %llu made, %llu trimmed; requests given a buffer of their own: over %u MB %llu, pool at its cap %llu (cumulative)",

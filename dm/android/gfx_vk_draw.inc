@@ -154,6 +154,7 @@ typedef struct {
     uint8_t gm;   // binds the raw pool table (a storage buffer under DMSH_GMEM_MAP_CB_SLOT): 1, 2 with the stores' write log too (gfx_vk_gmem.inc)
     uint64_t e5[2]; void *cpe5[2];   // compute: sets of storage image bindings bound to E5B9G9R9 textures, and its pipeline for each with those packed (cpipe_e5, spv_e5.h)
     uint8_t upsq;   // a compute shader DM_VK_UPSCALER_SQUARE_CS lists: its dispatches are replaced (gfx_vk_upsq.inc)
+    uint8_t has_discard;   // fragment shader contains OpKill / OpDemoteToHelperInvocation / OpTerminateInvocation
     const spv_bmap *bmap;   // its set's binding numbers compacted (spv_bind.h): NULL when none is at SPV_BIND_FROM or past it; its modules and its layout take it
     struct memu_t *memu;   // a task or mesh shader's compute form, on a GPU without VK_EXT_mesh_shader (gfx_vk_meshemu.inc: its facts, pipeline and pass-through vertex shader)
 } vshader;
@@ -460,6 +461,26 @@ static size_t spv_fit_precise(const uint32_t *code, size_t nw, const char *what,
             "vertex shader get the same depths (DM_SPV_PRECISE=0: the driver may fuse them). First: %s, %d", what, got);
     if (vk_debug()) LOG("[vk] %s: %d results kept unfused", what, got);
     *out = o; return k;
+}
+// In-place SPIR-V fast-path pass: strip NaN sample guards (DM_VK_FAST_SHADERS) + fast fullscreen post-FX at native sharpness (DM_VK_FAST_FX).
+static int fast_shaders_on(void) { static int v = -1; if (v < 0) { const char *e = getenv("DM_VK_FAST_SHADERS"); v = !(e && *e == '0'); } return v; }
+static int fast_fx_level(void) { const char *e = getenv("DM_VK_FAST_FX"); return e ? (*e != '0' ? atoi(e) : 0) : 1; }
+static void spv_fit_fast_fx(uint32_t *code, size_t nw, const char *what) {
+    int strip = fast_shaders_on(), ffx = fast_fx_level();
+    if ((!strip && !ffx) || nw < 4 || !code[3]) return;
+    uint32_t bound = code[3];
+    spv_fx_def *defs = malloc((size_t)bound * sizeof *defs); if (!defs) return;
+    int st[3] = {0};
+    if (spv_fast_fx(code, nw, defs, bound, strip, ffx, st)) {
+        if (st[1] || st[2]) {
+            LOG("[vk] fast post-FX %s: %d NaN-guards stripped, %d texture taps saved, %d grain sin killed (DM_VK_FAST_FX)", what, st[0], st[1], st[2]);
+        } else {
+            static _Atomic int logged_nan;
+            if (!atomic_exchange(&logged_nan, 1))
+                LOG("[vk] fast shaders: stripped %d NaN coordinate guards on image samples (DM_VK_FAST_SHADERS=0: keep)", st[0]);
+        }
+    }
+    free(defs);
 }
 // RelaxedPrecision on safe fragment ALU and local temporaries on Arm Mali (DM_VK_MALI_FP16=0 disables, =1 forces).
 static size_t spv_fit_mali_fp16(const uint32_t *code, size_t nw, const char *what, uint32_t **out) {
@@ -794,7 +815,7 @@ static vshader *sh_get(const char *key) {
     t_pool_info = 0; t_harr_info = 0; t_lbase_info = 0;
     snprintf(p, sizeof p, s->memu ? "%s/%s.cs.spv" : "%s/%s.spv", g_spv_dir, s->key); s->mod = sh_module(s, p, &s->b0);   // (a task / mesh shader in compute form: its kernel, through the same rewrites and binding map)
     { size_t nw = 0; uint32_t *w = spv_read(p, &nw);
-      if (w) { if (s->stage == SH_CS || s->memu) s->tgs = tgs_bytes(w, nw, s->key); if (has_tf && nw > 1) { tf_outs = spv_tff_outs(w, nw); tf_ver = w[1]; } spv_io(w, nw, &s->io_in, &s->io_out); s->vid = s->stage == SH_VS && spv_vid(w, nw); s->wlayer = s->stage != SH_PS && s->stage != SH_CS && spv_layer_out(w, nw); uint32_t ext[CB_MAX]; (cb_ext2_on() ? spv_cb_ext2 : spv_cb_ext)(w, nw, s->cb, s->ncb, ext); cb_ext_pick(s, ext, rext); free(w); } }
+      if (w) { if (s->stage == SH_CS || s->memu) s->tgs = tgs_bytes(w, nw, s->key); if (s->stage == SH_PS) s->has_discard = (uint8_t)spv_has_discard(w, nw); if (has_tf && nw > 1) { tf_outs = spv_tff_outs(w, nw); tf_ver = w[1]; } spv_io(w, nw, &s->io_in, &s->io_out); s->vid = s->stage == SH_VS && spv_vid(w, nw); s->wlayer = s->stage != SH_PS && s->stage != SH_CS && spv_layer_out(w, nw); uint32_t ext[CB_MAX]; (cb_ext2_on() ? spv_cb_ext2 : spv_cb_ext)(w, nw, s->cb, s->ncb, ext); cb_ext_pick(s, ext, rext); free(w); } }
     sh_bind_apply(s);   // the layout and stage_set's writes from here on: the numbers the modules have (the matching above read the file's)
     if (s->stage == SH_VS || (s->stage == SH_MS && !s->memu)) { snprintf(p, sizeof p, "%s/%s.z.spv", g_spv_dir, s->key); s->modz = sh_module(s, p, &s->b0); }
     if (t_lbase_info & 1) { s->lbpc = 1; s->lbase = s->stage == SH_VS && s->wlayer && !(t_lbase_info & 2); }   // its modules read the layer base (spv_fit_lbase)
@@ -1189,6 +1210,7 @@ static void views_drop(VkImage img) {
     }
 }
 static nvn_hmap g_samps = {.klen = sizeof(samp_par) + 4};
+static float max_aniso_cap(void) { static float v = -1.f; if (v < 0.f) { const char *e = getenv("DM_VK_MAX_ANISO"); v = e && *e ? (float)atof(e) : 16.f; if (v < 1.f) v = 1.f; } return v; }
 static VkSampler samp_get(const samp_par *p, int shadow) {
     struct { samp_par p; int shadow; } k; memset(&k, 0, sizeof k); if (p) k.p = *p; k.shadow = shadow;
     VkSampler s = nvn_hm_get(&g_samps, &k); if (s) return s;
@@ -1201,7 +1223,12 @@ static VkSampler samp_get(const samp_par *p, int shadow) {
         .addressModeU = W[p ? p->ws & 7 : 7], .addressModeV = W[p ? p->wt & 7 : 7], .addressModeW = W[p ? p->wr & 7 : 7],
         .mipLodBias = p ? p->lod_bias : 0, .minLod = p ? p->lod_min : 0, .maxLod = minf >= 2 ? (p ? p->lod_max : 1000.f) : 0.25f,
         .compareEnable = shadow || (p && p->cmp_mode), .compareOp = p && p->cmp_func ? (VkCompareOp)(p->cmp_func - 1) : VK_COMPARE_OP_LESS_OR_EQUAL};
-    if (p && p->aniso > 1.f) { ci.anisotropyEnable = VK_TRUE; ci.maxAnisotropy = p->aniso > g_vk.props.limits.maxSamplerAnisotropy ? g_vk.props.limits.maxSamplerAnisotropy : p->aniso; }
+    float cap = max_aniso_cap();
+    if (p && p->aniso > 1.f && cap > 1.f) {
+        float a = p->aniso > cap ? cap : p->aniso;
+        ci.anisotropyEnable = VK_TRUE;
+        ci.maxAnisotropy = a > g_vk.props.limits.maxSamplerAnisotropy ? g_vk.props.limits.maxSamplerAnisotropy : a;
+    }
     if (p) { float a = p->border[3], l = p->border[0] + p->border[1] + p->border[2];   // border colours: Vulkan without VK_EXT_custom_border_color has three
         ci.borderColor = a < 0.5f ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK : l > 1.5f ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK; }
     if (vkCreateSampler(g_vk.dev, &ci, NULL, &s) != VK_SUCCESS) return VK_NULL_HANDLE;
@@ -1263,7 +1290,7 @@ static VkRenderPass rp_get_op(const rp_key *k, uint32_t clr) {
     VkAttachmentDescription at[9]; VkAttachmentReference cr[8], dr; uint32_t na = 0;
     for (uint32_t i = 0; i < k->ncolor; i++) {
         if (!k->color[i]) { cr[i] = (VkAttachmentReference){VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_GENERAL}; continue; }
-        VkAttachmentLoadOp lop = (clr & (1u << i)) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+        VkAttachmentLoadOp lop = (clr & (1u << i)) ? VK_ATTACHMENT_LOAD_OP_CLEAR : (clr & (1u << (16u + i))) ? VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_LOAD_OP_LOAD;
         at[na] = (VkAttachmentDescription){0, k->color[i], (VkSampleCountFlagBits)k->samples, lop, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                                            VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL};
         cr[i] = (VkAttachmentReference){na++, VK_IMAGE_LAYOUT_GENERAL};
@@ -1298,7 +1325,7 @@ static VkRenderPass rp_get(const rp_key *k) { return rp_get_op(k, 0); }
 static struct { int active, layered; VkRenderPass rp; rp_key key; uint32_t w, h, vw, vh, layers; VkFramebuffer fb; vtex *cv[8], *dv; uint32_t clv[8], cly[8];
                 uint8_t *snap[8]; size_t snap_cap[8], snap_n[8]; uint8_t *snap_dst[8]; VkImage snap_img[8];
                 uint32_t pend_clr; VkClearColorValue pend_cc[8]; float pend_d; uint32_t pend_s; } P;   // snap: a linear target's guest bytes at rp_prepare (lsnap_take), until its write-back takes them
-static uint64_t g_passes, g_loadop_clears;
+static uint64_t g_passes, g_loadop_clears, g_loadop_dcs;
 static int clear_loadop_on(void) {
     static int v = -1;
     if (v < 0) { const char *e = getenv("DM_VK_CLEAR_LOADOP"); v = !(e && *e == '0'); if (!v) LOG("[vk] DM_VK_CLEAR_LOADOP=0: clears use vkCmdClearAttachments instead of LOAD_OP_CLEAR"); }
@@ -1717,28 +1744,30 @@ static int rp_prepare_(int layered) {
 }
 static int rp_prepare(void) { return rp_prepare_(0); }
 static void copied_depth_pass(VkCommandBuffer c);   // gfx_vk_dscopy.inc
-static int rp_start(void) {
+static int rp_start_(uint32_t dc_mask) {
     if (P.active) return 1;
     uint32_t pend = P.pend_clr; VkClearColorValue pcc[8]; float pd = P.pend_d; uint32_t ps = P.pend_s;
     if (pend) { memcpy(pcc, P.pend_cc, sizeof pcc); P.pend_clr = 0; }
     VkCommandBuffer c = cb(); if (!c) return 0;
-    VkRenderPass rp = P.rp; VkClearValue cv[9]; uint32_t ncv = 0;
-    if (pend) {
-        uint32_t clr = 0;
-        for (uint32_t i = 0; i < P.key.ncolor; i++) {
-            if (!P.key.color[i]) continue;
-            if (pend & (1u << i)) { clr |= (1u << i); cv[ncv].color = pcc[i]; }
-            else memset(&cv[ncv], 0, sizeof cv[ncv]);
-            ncv++;
+    VkRenderPass rp = P.rp; VkClearValue cv[9]; uint32_t ncv = 0, clr = 0;
+    for (uint32_t i = 0; i < P.key.ncolor; i++) {
+        if (!P.key.color[i]) continue;
+        if (pend & (1u << i)) { clr |= (1u << i); cv[ncv].color = pcc[i]; ncv++; }
+        else {
+            if (dc_mask & (1u << i)) clr |= (1u << (16u + i));
+            if (pend) { memset(&cv[ncv], 0, sizeof cv[ncv]); ncv++; }
         }
-        if (P.key.depth) {
-            if (pend & ((1u << 8) | (1u << 9))) { clr |= pend & ((1u << 8) | (1u << 9)); cv[ncv].depthStencil = (VkClearDepthStencilValue){pd, ps}; }
-            else memset(&cv[ncv], 0, sizeof cv[ncv]);
-            ncv++;
-        }
-        VkRenderPass rpo = clr ? rp_get_op(&P.key, clr) : P.rp;
-        if (rpo && clr) { rp = rpo; g_loadop_clears++; }
-        else { rp = P.rp; ncv = 0; }
+    }
+    if (P.key.depth && pend) {
+        if (pend & ((1u << 8) | (1u << 9))) { clr |= pend & ((1u << 8) | (1u << 9)); cv[ncv].depthStencil = (VkClearDepthStencilValue){pd, ps}; }
+        else memset(&cv[ncv], 0, sizeof cv[ncv]);
+        ncv++;
+    }
+    if (!pend) ncv = 0;
+    if (clr) {
+        VkRenderPass rpo = rp_get_op(&P.key, clr);
+        if (rpo) { rp = rpo; if (pend) g_loadop_clears++; else g_loadop_dcs++; }
+        else ncv = 0;
     }
     VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = rp, .framebuffer = P.fb, .renderArea = {{0, 0}, {P.w, P.h}}, .clearValueCount = ncv, .pClearValues = ncv ? cv : NULL};
     if (prof_on()) prof_pass_begin();
@@ -1747,6 +1776,7 @@ static int rp_start(void) {
     P.active = 1; g_passes++;
     return 1;
 }
+static int rp_start(void) { return rp_start_(0); }
 // a completed chunk's draw resources (the completion thread, after its fence, before busy = 0): arena blocks kept for reuse, texel buffer views destroyed, and its descriptor
 // sets free again for its next recording (ds_chunk_done; DM_VK_SET_RECYCLE=0: its pools reset)
 static void ds_chunk_done(chunk *c);
@@ -3606,6 +3636,42 @@ static VkRect2D pass_scissor_rect(void) {
     }
     return sc;
 }
+// TBDR dead-load elimination (DM_VK_FAST_LOAD=0 disables): switch LOAD_OP_LOAD -> DONT_CARE when a pass's first draw
+// is a fullscreen opaque post-FX draw covering the full render area with no discard, blend, depth, or stencil test.
+static int fast_load_on(void) { static int v = -1; if (v < 0) { const char *e = getenv("DM_VK_FAST_LOAD"); v = !(e && *e == '0'); } return v; }
+static int is_fullscreen_fx_ps(const vshader *ps) {
+    return ps && (!strcmp(ps->key, "8582f2c040cbb92e") || !strcmp(ps->key, "55f39892289e5640") ||
+                  !strcmp(ps->key, "c0e8753e332b093b") || !strcmp(ps->key, "ed258dfe4c446ddb") ||
+                  !strcmp(ps->key, "c6a97dbbe873316c") || !strcmp(ps->key, "a8e893c1050825de"));
+}
+static uint32_t rp_draw_dc_mask(const vshader *ps) {
+    if (!fast_load_on() || !is_fullscreen_fx_ps(ps) || ps->has_discard) return 0;
+    if (P.key.samples != VK_SAMPLE_COUNT_1_BIT || P.layers != 1) return 0;
+    if (D.color.alpha_func && D.color.alpha_func != NVN_ALPHA_FUNC_ALWAYS) return 0;
+    if (D.color.logic_op != NVN_LOGIC_OP_COPY || D.ms.a2c) return 0;
+    if (D.poly.mode != NVN_POLYGON_MODE_FILL || D.poly.cull != NVN_FACE_NONE) return 0;
+    if (P.key.depth && (D.ds.dt || D.ds.st)) return 0;
+    VkRect2D sc = pass_scissor_rect();
+    if (sc.offset.x != 0 || sc.offset.y != 0 || sc.extent.width != P.w || sc.extent.height != P.h) return 0;
+    if (D.has_vp) {
+        float sx = (P.vw && P.vw != P.w) ? (float)P.w / (float)P.vw : 1.0f;
+        float sy = (P.vh && P.vh != P.h) ? (float)P.h / (float)P.vh : 1.0f;
+        if (fabsf(D.vp[0][0]) > 0.5f || fabsf(D.vp[0][1]) > 0.5f ||
+            fabsf(D.vp[0][2]) * sx < (float)P.w - 0.5f || fabsf(D.vp[0][3]) * sy < (float)P.h - 0.5f) return 0;
+    }
+    uint32_t dc = 0;
+    for (uint32_t i = 0; i < P.key.ncolor && i < 8; i++) {
+        if (!P.key.color[i]) continue;
+        if ((D.color.blend_en >> i & 1u) || ((D.chmask.mask >> (4 * i)) & 0xfu) != 0xfu) continue;
+        dc |= (1u << i);
+    }
+    if (dc) {
+        static _Atomic int logged_dc;
+        if (!atomic_exchange(&logged_dc, 1))
+            LOG("[vk] TBDR dead-load eliminator active: first-draw fullscreen pass skips tile LOAD (%s, DM_VK_FAST_LOAD=0: keep LOAD)", ps->key);
+    }
+    return dc;
+}
 static void draw_dyn_state(VkCommandBuffer c, VkViewport *ov, VkRect2D *osc, int rd) {
     float sx = (P.vw && P.vw != P.w) ? (float)P.w / (float)P.vw : 1.0f;
     float sy = (P.vh && P.vh != P.h) ? (float)P.h / (float)P.vh : 1.0f;
@@ -3740,7 +3806,8 @@ static int vk_draw_(const p_draw *dw, const p_draw_idx *di) {
         if (!ds_moved(dseq) || ds_again(t, 0)) { g_drop[3]++; return 0; }
     }
     if (g_bind_bad) { g_drop[4]++; static int nb; if (nb < 10) { nb++; LOG("[RED] [vk] draw skipped: a binding has no valid descriptor (shaders %s %s)", k.sh[0]->key, k.sh[1] ? k.sh[1]->key : "-"); } return 0; }
-    if (rd ? !rd_open() : !rp_start()) { g_drop[5]++; return 0; }   // after the textures: their uploads end a pass begun before (it is begun again on the same targets); it only takes cur(), so the sets' chunk is the one they are bound in below
+    uint32_t dc = (!rd && !P.active) ? rp_draw_dc_mask(k.sh[1]) : 0;
+    if (rd ? !rd_open() : !rp_start_(dc)) { g_drop[5]++; return 0; }   // after the textures: their uploads end a pass begun before (it is begun again on the same targets); it only takes cur(), so the sets' chunk is the one they are bound in below
     VkCommandBuffer c = C->cb;
     if (!rd) occl_begin();
     else if (!g_rd_made++) LOG("[vk] rasterizer discard: a draw whose vertex stage writes memory runs as a dispatch, in a pass of its own (vertex %s, %u %s; DM_VK_RAST_DISCARD=0 leaves it out)", k.sh[0]->key, dw ? (unsigned)dw->count : (unsigned)di->count, dw ? "vertices" : "indices");

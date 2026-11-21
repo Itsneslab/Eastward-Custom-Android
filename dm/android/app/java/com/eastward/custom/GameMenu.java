@@ -115,7 +115,7 @@ public final class GameMenu {
         LinearLayout brandCol = new LinearLayout(a);
         brandCol.setOrientation(LinearLayout.VERTICAL);
         brandCol.addView(text(a, "Eastward", 15, TEXT, true));
-        brandCol.addView(text(a, "v1.1.9 (Eksperimen)", 11, ACCENT, true));
+        brandCol.addView(text(a, "v" + GameSettings.appVersionTag(a), 11, ACCENT, true));
         brand.addView(brandCol);
         rail.addView(brand);
 
@@ -362,6 +362,7 @@ public final class GameMenu {
 
         heading(a, UiText.tr(a, "Quick Controls", "Kontrol Cepat"));
         presetCard(a);
+        screenModeCard(a);
         actionCard(a, UiText.tr(a, "Auto-Tune This Device", "Sesuaikan Otomatis HP Ini"),
                 UiText.tr(a,
                         "Detects your CPU core layout, GPU (Mali/Adreno) & optimal 720p settings. Applies next start.",
@@ -380,9 +381,9 @@ public final class GameMenu {
                     if (pad != null) pad.fpsSet(checked);
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
-        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
-                UiText.tr(a, "Speeds up fragment shaders on Mali & Adreno GPUs; turn off if visual glitches appear",
-                        "Percepat shader fragment di GPU Mali & Adreno; matikan jika muncul glitch visual"));
+        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", !GameSettings.isAdrenoGpu(a),
+                UiText.tr(a, "Auto-on for Mali; default off on Adreno (turn off if visual glitches appear)",
+                        "Otomatis aktif di Mali; default mati di Adreno (matikan jika muncul glitch visual)"));
     }
 
     private static void buildControls(Activity a) {
@@ -426,6 +427,7 @@ public final class GameMenu {
 
     private static void buildGraphics(Activity a) {
         heading(a, UiText.tr(a, "Display & Pixel Quality", "Tampilan & Kualitas Piksel"));
+        screenModeCard(a);
         toggleRowCard(a, UiText.tr(a, "FPS Overlay", "Overlay FPS"),
                 UiText.tr(a, "Show live frames-per-second counter in corner",
                         "Tampilkan counter FPS langsung di sudut layar"),
@@ -436,8 +438,10 @@ public final class GameMenu {
                     GameSettings.set(a, "DM_SHOW_FPS", checked ? "1" : "0");
                 });
 
+        boolean detAny = GameSettings.isMaliGpu(a) || GameSettings.isAdrenoGpu(a);
         actionCard(a, UiText.tr(a, "Auto-Chipset Optimization", "Optimasi Chipset Otomatis"),
-                GameSettings.detectedChipsetSummary(a) + "\n"
+                (detAny ? UiText.tr(a, "✓ Detected: ", "✓ Terdeteksi: ") : "• ")
+                        + GameSettings.detectedChipsetSummary(a) + "\n"
                         + UiText.tr(a, "Tap to restore 100% crisp + auto chipset defaults.",
                         "Ketuk untuk reset ke 100% tajam + setelan otomatis chipset ini."),
                 () -> {
@@ -459,24 +463,27 @@ public final class GameMenu {
             {"100", UiText.tr(a, "100% Native (Crisp)", "100% Asli (Tajam)"),
                     UiText.tr(a, "Full native pixel-art sharpness (default)",
                             "Ketajaman pixel-art penuh tanpa turun resolusi (bawaan)")},
-            {"80", UiText.tr(a, "80% Crisp Pixel-Art (Exp)", "80% Pixel Tajam (Eksperimen)"),
-                    UiText.tr(a, "Keeps 640x360 world pixels 100% sharp; eases 720p post-FX (-36% GPU load)",
-                            "Pixel-art dunia 640x360 tetap 100% tajam; hanya efek 720p diringankan (-36% GPU)")},
-            {"75", UiText.tr(a, "75% Smooth Pixel-Art", "75% Lancar (Pixel Tajam)"),
-                    UiText.tr(a, "Keeps 640x360 world pixels sharp; 540p post-FX for Helio G80/G88/G99 & Adreno 610",
-                            "Pixel-art 640x360 tetap tajam; sangat membantu Helio G80/G88/G99 & Adreno 610")},
-            {"67", UiText.tr(a, "67% Fast Post-FX", "67% Ngebut"),
-                    UiText.tr(a, "Maximum GPU headroom on heavy outdoor areas",
-                            "Ringankan beban GPU maksimal di area berat")}
+            {"90", UiText.tr(a, "90% Crisp Boost", "90% Tajam Ringan"),
+                    UiText.tr(a, "Near-native 16:9 look while easing post-FX (-19% GPU load); 360p sprites stay 100%",
+                            "Hampir identik dengan asli tanpa ubah rasio; ringankan efek (-19% beban GPU)")},
+            {"80", UiText.tr(a, "80% Smooth Pixel", "80% Lancar"),
+                    UiText.tr(a, "Keeps 360p pixel-art 100% sharp & exact 16:9 framing (-36% GPU load)",
+                            "Sprite 360p tetap tajam & rasio layar tetap pas (-36% beban GPU)")},
+            {"70", UiText.tr(a, "70% Turbo GPU", "70% Ngebut"),
+                    UiText.tr(a, "Maximum GPU headroom with exact 16:9 aspect preserved (-51% GPU load)",
+                            "Ringankan beban GPU maksimal dengan rasio 16:9 tetap utuh (-51% beban GPU)")}
         });
 
-        heading(a, UiText.tr(a, "Experimental & Compatibility", "Eksperimen & Kompatibilitas"));
-        envToggleCard(a, UiText.tr(a, "Unlock 30fps Swapchain (Exp)", "Bebas Lock 30fps (Eksperimen)"), "DM_VK_MAILBOX", true,
+        heading(a, UiText.tr(a, "Performance & Compatibility", "Performa & Kompatibilitas"));
+        envToggleCard(a, UiText.tr(a, "Fast Post-FX Shaders (+FPS)", "Efek Post-FX Cepat (+FPS)"), "DM_VK_FAST_FX", true,
+                UiText.tr(a, "Keeps 100% native sharpness (no blur/HUD lines) while cutting heavy post-FX GPU work",
+                        "Gambar tetap 100% tajam (tanpa burik/garis di nyawa); memangkas beban efek post-FX berat"));
+        envToggleCard(a, UiText.tr(a, "Unlock 30fps Swapchain", "Bebas Lock 30fps (Mailbox)"), "DM_VK_MAILBOX", true,
                 UiText.tr(a, "Uses Mailbox/Relaxed VSync to avoid 30fps locks while walking; turn off if tearing",
                         "Pakai Mailbox/Relaxed agar tidak terkunci 30fps saat berjalan; matikan jika berkedip"));
-        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", true,
-                UiText.tr(a, "Speeds up fragment math on Mali & Adreno; turn off only if artifacts appear",
-                        "Percepat shader di Mali & Adreno; matikan hanya jika ada glitch"));
+        envToggleCard(a, UiText.tr(a, "FP16 Shader Fast Math", "Optimasi Shader FP16"), "DM_VK_MALI_FP16", !GameSettings.isAdrenoGpu(a),
+                UiText.tr(a, "Auto-on for Mali; default off on Adreno (turn off only if artifacts appear)",
+                        "Otomatis aktif di Mali; default mati di Adreno (matikan hanya jika ada glitch)"));
     }
 
     private static void buildSystem(Activity a) {
@@ -503,7 +510,18 @@ public final class GameMenu {
 
         heading(a, UiText.tr(a, "Device & Vulkan Runtime", "Perangkat & Runtime Vulkan"));
         LinearLayout infoCard = card(a);
-        infoCard.addView(text(a, UiText.tr(a, "Active Vulkan Driver", "Driver Vulkan Aktif"), 15, TEXT, true));
+        boolean detSys = GameSettings.isMaliGpu(a) || GameSettings.isAdrenoGpu(a);
+        String sysBadge = detSys
+                ? (GameSettings.isAdrenoGpu(a)
+                        ? UiText.tr(a, "✓ Detected: Snapdragon / Adreno — Mesa Turnip recommended if using stock glitches",
+                                "✓ Terdeteksi di HP ini: Snapdragon / Adreno — disarankan pakai Mesa Turnip")
+                        : UiText.tr(a, "✓ Detected: MediaTek / Mali — Phone Driver or Mali PanVK (FristOneRR)",
+                                "✓ Terdeteksi di HP ini: MediaTek / Mali — Driver Bawaan atau PanVK Mali (FristOneRR)"))
+                : UiText.tr(a, "• Auto-detecting GPU runtime", "• Deteksi GPU otomatis");
+        infoCard.addView(text(a, sysBadge, 12, detSys ? 0xFF6BE28A : SUB, true));
+        TextView actHdr = text(a, UiText.tr(a, "Active Vulkan Driver", "Driver Vulkan Aktif"), 15, TEXT, true);
+        actHdr.setPadding(0, dp(a, 6), 0, 0);
+        infoCard.addView(actHdr);
         TextView drv = text(a, GameSettings.driverLabel(a), 14, ACCENT, true);
         drv.setPadding(0, dp(a, 4), 0, dp(a, 6));
         infoCard.addView(drv);
@@ -600,6 +618,43 @@ public final class GameMenu {
         }
         String desc = (cur >= 0 && cur < PRESET_DESCS.length) ? PRESET_DESCS[cur] : "";
         c.addView(text(a, desc, 12, SUB, false));
+    }
+
+    private static void screenModeCard(Activity a) {
+        LinearLayout c = card(a);
+        titleRow(a, c, UiText.tr(a, "Screen Size (Live)", "Ukuran Layar (Langsung)"),
+                UiText.tr(a, "Instant", "Langsung Berubah"));
+        String cur = GameSettings.get(a, "DM_SCREEN_MODE", "0");
+        boolean isWide = "1".equals(cur);
+
+        LinearLayout row = new LinearLayout(a);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(a, 10), 0, dp(a, 6));
+
+        TextView btn169 = pillButton(a, UiText.tr(a, "16:9 Fit", "16:9 Biasa"), !isWide, () -> {
+            GameSettings.set(a, "DM_SCREEN_MODE", "0");
+            if (pad != null) pad.wideFull = false;
+            try { Gamepad.nativeSetScreenMode(0); } catch (Throwable ignored) {}
+            redraw();
+        });
+        TextView btnWide = pillButton(a, UiText.tr(a, "Wide Full", "Wide Full"), isWide, () -> {
+            GameSettings.set(a, "DM_SCREEN_MODE", "1");
+            if (pad != null) pad.wideFull = true;
+            try { Gamepad.nativeSetScreenMode(1); } catch (Throwable ignored) {}
+            redraw();
+        });
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, -2, 1f);
+        lp1.rightMargin = dp(a, 8);
+        row.addView(btn169, lp1);
+        row.addView(btnWide, new LinearLayout.LayoutParams(0, -2, 1f));
+        c.addView(row);
+
+        c.addView(text(a, isWide
+                ? UiText.tr(a, "Wide Full: fills the entire phone screen edge-to-edge without black bars.",
+                        "Wide Full: layar penuh selebar HP tanpa garis hitam pinggir (berubah langsung).")
+                : UiText.tr(a, "16:9 Fit: original Nintendo Switch aspect ratio with clean framing.",
+                        "16:9 Biasa: rasio asli Nintendo Switch yang proporsional (berubah langsung)."),
+                12, SUB, false));
     }
 
     private static void envChoiceCard(Activity a, String title, String key, String def, String[][] opts) {

@@ -54,6 +54,7 @@ public final class Gamepad extends View {
     static native String nativeEnv(String name);
     static native long nativeFrames();
     static native boolean nativePause(boolean on);
+    static native void nativeSetScreenMode(int mode);
 
     static final int B_A = 0, B_B = 1, B_X = 2, B_Y = 3, B_LS = 4, B_RS = 5, B_L = 6, B_R = 7, B_ZL = 8, B_ZR = 9,
             B_PLUS = 10, B_MINUS = 11, B_LEFT = 12, B_UP = 13, B_RIGHT = 14, B_DOWN = 15;
@@ -119,6 +120,7 @@ public final class Gamepad extends View {
     String fpsStr;
     long fpsFrames, fpsAt;
     boolean fpsOn;
+    boolean wideFull;
     Paint fpsPaint;
     final Handler uiH = new Handler(Looper.getMainLooper());
     final Runnable fpsTickRun = new Runnable() { public void run() { fpsTick(); } };
@@ -550,9 +552,13 @@ public final class Gamepad extends View {
     void pushGame() {
         float w = getWidth(), h = getHeight();
         if (w <= 0 || h <= 0) return;
-        if (w / h > 16f / 9f) w = h * 16f / 9f;
-        else h = w * 9f / 16f;
-        float x0 = (getWidth() - w) * 0.5f, y0 = (getHeight() - h) * 0.5f;
+        float x0 = 0f, y0 = 0f;
+        if (!wideFull) {
+            if (w / h > 16f / 9f) w = h * 16f / 9f;
+            else h = w * 9f / 16f;
+            x0 = (getWidth() - w) * 0.5f;
+            y0 = (getHeight() - h) * 0.5f;
+        }
         int[] ids = new int[16];
         float[] xs = new float[16], ys = new float[16];
         int n = 0;
@@ -1117,6 +1123,7 @@ public final class Gamepad extends View {
                 }
                 view.padsChanged();
                 shakeStart(a);
+                view.wideFull = "1".equals(nativeEnv("DM_SCREEN_MODE"));
                 if ("1".equals(nativeEnv("DM_SHOW_FPS"))) view.fpsSet(true);
                 nativeLog("Eastward Custom gamepad started (" + PRESET_NAMES[view.preset] + ")");
             }

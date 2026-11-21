@@ -63,7 +63,7 @@ import java.util.zip.ZipInputStream;
 public final class SetupActivity extends Activity {
     private static final int REQ_PERM = 100, REQ_GAME = 101, REQ_KEYS = 102, REQ_DRIVER = 103,
             REQ_SAVE_EXPORT = 104, REQ_SAVE_IMPORT = 105,
-            REQ_UPDATE = 106, REQ_DLC = 107, REQ_LOG_EXPORT = 108;
+            REQ_UPDATE = 106, REQ_DLC = 107, REQ_LOG_EXPORT = 108, REQ_MOD = 109;
 
     private static volatile boolean setupRunning;
     private static String basePath;
@@ -74,21 +74,21 @@ public final class SetupActivity extends Activity {
     private static final List<Uri> dlcUris = new ArrayList<>();
     private static boolean allowDamagedOffer;
 
-    private static final int C_BG        = 0xFF0D0F13;
-    private static final int C_CARD      = 0xFF1C1F26;
-    private static final int C_PANEL     = 0xFF151820;
-    private static final int C_CARD_LINE = 0xFF2A2E37;
-    private static final int C_CHIP      = 0xFF262A33;
-    private static final int C_TEXT      = 0xFFF2F3F5;
-    private static final int C_SUB       = 0xFF9AA0AB;
+    private static final int C_BG        = 0xFF0A0C10;
+    private static final int C_CARD      = 0xFF151822;
+    private static final int C_PANEL     = 0xFF0F1219;
+    private static final int C_CARD_LINE = 0xFF272D3B;
+    private static final int C_CHIP      = 0xFF202634;
+    private static final int C_TEXT      = 0xFFF4F6FA;
+    private static final int C_SUB       = 0xFF97A1B3;
     private static final int C_ACCENT    = 0xFFF5C428;
-    private static final int C_INK       = 0xFF1A1710;
+    private static final int C_INK       = 0xFF16130B;
     private static final int C_OK        = 0xFF6BE28A;
     private static final int C_WARN      = 0xFFFFB74D;
     private static final String GITHUB_URL = "https://github.com/Itsneslab/Eastward-Custom-Android";
 
-    private TextView statusTv, baseFileTv, updateFileTv, dlcFilesTv, keysTv, driverTv, readyBadgeTv;
-    private TextView btnClearUpdate, btnClearDlc;
+    private TextView statusTv, baseFileTv, updateFileTv, dlcFilesTv, modStatusTv, keysTv, deviceDetectTv, driverTv, driverTipTv, readyBadgeTv;
+    private TextView btnClearUpdate, btnClearDlc, btnClearMod, btnPickDrv, btnResetDrv;
     private ProgressBar progressBar;
     private TextView btnSetup, btnPlay, btnSetupAnyway;
     private ImageView iconView;
@@ -132,6 +132,7 @@ public final class SetupActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        GameSettings.syncModOverlay(this);
         if (readyBadgeTv != null) refreshUi();
     }
 
@@ -152,23 +153,40 @@ public final class SetupActivity extends Activity {
         root.setPadding(p, (int) (14 * dp), p, p);
         rootScroll.addView(root);
 
-        // Modern dark-glass Hero Header Card + GitHub Link + Play CTA
+        // Modern obsidian-gold Hero Header Card + Status Pill + Gradient Play CTA
         LinearLayout header = card(dp);
+        GradientDrawable heroBg = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xFF1E2331, 0xFF131620});
+        heroBg.setCornerRadius(20 * dp);
+        heroBg.setStroke((int) Math.max(1, dp), 0xFF31384B);
+        header.setBackground(heroBg);
+        header.setElevation(8 * dp);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
 
+        android.widget.FrameLayout iconFrame = new android.widget.FrameLayout(this);
+        GradientDrawable icoBg = new GradientDrawable();
+        icoBg.setColor(0xFF1D1B14);
+        icoBg.setCornerRadius(16 * dp);
+        icoBg.setStroke((int) Math.max(1, 1.5f * dp), 0x66F5C428);
+        iconFrame.setBackground(icoBg);
+        int icoPad = (int) (5 * dp);
+        iconFrame.setPadding(icoPad, icoPad, icoPad, icoPad);
+
         iconView = new ImageView(this);
-        int icoSz = (int) (54 * dp);
-        LinearLayout.LayoutParams icoLp = new LinearLayout.LayoutParams(icoSz, icoSz);
-        icoLp.rightMargin = (int) (14 * dp);
+        int icoSz = (int) (52 * dp);
         try (InputStream es = getAssets().open("icons/emblem.png")) {
             Bitmap em = BitmapFactory.decodeStream(es);
             if (em != null) iconView.setImageBitmap(em);
-            else iconView.setVisibility(View.GONE);
+            else iconFrame.setVisibility(View.GONE);
         } catch (Throwable t) {
-            iconView.setVisibility(View.GONE);
+            iconFrame.setVisibility(View.GONE);
         }
-        header.addView(iconView, icoLp);
+        iconFrame.addView(iconView, new android.widget.FrameLayout.LayoutParams(icoSz, icoSz));
+        LinearLayout.LayoutParams icoLp = new LinearLayout.LayoutParams(-2, -2);
+        icoLp.rightMargin = (int) (14 * dp);
+        header.addView(iconFrame, icoLp);
 
         LinearLayout hTxt = new LinearLayout(this);
         hTxt.setOrientation(LinearLayout.VERTICAL);
@@ -179,20 +197,20 @@ public final class SetupActivity extends Activity {
         TextView title = new TextView(this);
         title.setText("Eastward Custom");
         title.setTextColor(C_TEXT);
-        title.setTextSize(19);
+        title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         titleRow.addView(title);
 
         TextView verTag = new TextView(this);
-        verTag.setText("v1.1.9 (Eksperimen)");
+        verTag.setText("v" + GameSettings.appVersionTag(this));
         verTag.setTextColor(C_ACCENT);
-        verTag.setTextSize(11);
+        verTag.setTextSize(10);
         verTag.setTypeface(Typeface.DEFAULT_BOLD);
-        verTag.setPadding((int) (8 * dp), (int) (2 * dp), (int) (8 * dp), (int) (2 * dp));
+        verTag.setPadding((int) (9 * dp), (int) (3 * dp), (int) (9 * dp), (int) (3 * dp));
         GradientDrawable vbg = new GradientDrawable();
-        vbg.setColor(0x22F5C428);
+        vbg.setColor(0x24F5C428);
         vbg.setCornerRadius(10 * dp);
-        vbg.setStroke((int) Math.max(1, dp), C_ACCENT);
+        vbg.setStroke((int) Math.max(1, dp), 0x88F5C428);
         verTag.setBackground(vbg);
         LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(-2, -2);
         vlp.leftMargin = (int) (10 * dp);
@@ -200,20 +218,29 @@ public final class SetupActivity extends Activity {
         hTxt.addView(titleRow);
 
         readyBadgeTv = new TextView(this);
-        readyBadgeTv.setTextSize(13);
-        readyBadgeTv.setPadding(0, (int) (4 * dp), 0, (int) (6 * dp));
-        hTxt.addView(readyBadgeTv);
+        readyBadgeTv.setTextSize(12);
+        readyBadgeTv.setTypeface(Typeface.DEFAULT_BOLD);
+        readyBadgeTv.setPadding((int) (10 * dp), (int) (4 * dp), (int) (10 * dp), (int) (4 * dp));
+        GradientDrawable stBg = new GradientDrawable();
+        stBg.setColor(0xFF0E131B);
+        stBg.setCornerRadius(10 * dp);
+        stBg.setStroke((int) Math.max(1, dp), 0xFF263042);
+        readyBadgeTv.setBackground(stBg);
+        LinearLayout.LayoutParams stLp = new LinearLayout.LayoutParams(-2, -2);
+        stLp.topMargin = (int) (5 * dp);
+        stLp.bottomMargin = (int) (6 * dp);
+        hTxt.addView(readyBadgeTv, stLp);
 
         // Clickable GitHub Profile / Repo Link Pill
         TextView ghPill = new TextView(this);
         ghPill.setText("GitHub  \u2022  Itsneslab/Eastward-Custom-Android  \u2197");
-        ghPill.setTextColor(C_ACCENT);
-        ghPill.setTextSize(12);
+        ghPill.setTextColor(C_SUB);
+        ghPill.setTextSize(11);
         ghPill.setTypeface(Typeface.DEFAULT_BOLD);
-        ghPill.setPadding((int) (11 * dp), (int) (5 * dp), (int) (11 * dp), (int) (5 * dp));
+        ghPill.setPadding((int) (10 * dp), (int) (4 * dp), (int) (10 * dp), (int) (4 * dp));
         GradientDrawable ghBg = new GradientDrawable();
         ghBg.setColor(C_CHIP);
-        ghBg.setCornerRadius(12 * dp);
+        ghBg.setCornerRadius(10 * dp);
         ghBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
         ghPill.setBackground(ghBg);
         ghPill.setOnClickListener(v -> {
@@ -223,8 +250,7 @@ public final class SetupActivity extends Activity {
                 toast("GitHub: " + GITHUB_URL);
             }
         });
-        LinearLayout.LayoutParams ghlp = new LinearLayout.LayoutParams(-2, -2);
-        hTxt.addView(ghPill, ghlp);
+        hTxt.addView(ghPill, new LinearLayout.LayoutParams(-2, -2));
 
         header.addView(hTxt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -235,7 +261,7 @@ public final class SetupActivity extends Activity {
 
         TextView btnExportLog = new TextView(this);
         btnExportLog.setText(UiText.tr(this, "Export Log", "Ekspor Log"));
-        btnExportLog.setTextColor(C_ACCENT);
+        btnExportLog.setTextColor(C_TEXT);
         btnExportLog.setTextSize(11);
         btnExportLog.setSingleLine(true);
         btnExportLog.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
@@ -319,11 +345,18 @@ public final class SetupActivity extends Activity {
 
         LinearLayout.LayoutParams hdrStackLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hdrStackLp.rightMargin = (int) (10 * dp);
+        hdrStackLp.rightMargin = (int) (12 * dp);
         header.addView(rightHdr, hdrStackLp);
 
-        btnPlay = actionBtn(UiText.tr(this, "Play Eastward", "Mainkan Eastward"), C_ACCENT, C_INK, dp, true);
-        btnPlay.setPadding((int) (20 * dp), (int) (14 * dp), (int) (20 * dp), (int) (14 * dp));
+        btnPlay = actionBtn(UiText.tr(this, "\u25B6  Play Eastward", "\u25B6  Mainkan Eastward"), C_ACCENT, C_INK, dp, true);
+        GradientDrawable playBg = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFFFFDA54, C_ACCENT, 0xFFE0A610});
+        playBg.setCornerRadius(16 * dp);
+        btnPlay.setBackground(playBg);
+        btnPlay.setElevation(8 * dp);
+        btnPlay.setTextSize(14);
+        btnPlay.setPadding((int) (22 * dp), (int) (16 * dp), (int) (22 * dp), (int) (16 * dp));
         btnPlay.setOnClickListener(v -> startGame());
         header.addView(btnPlay);
         root.addView(header, cardLp(dp));
@@ -336,11 +369,20 @@ public final class SetupActivity extends Activity {
         LinearLayout rightCol = new LinearLayout(this);
         rightCol.setOrientation(LinearLayout.VERTICAL);
 
-        // Left Card 1: Game Files, Update, DLC & Keys Setup
+        // Left Card 1: 2 Main Required Slots (Base Game & Keys) + 3 Optional Slots (Update, DLC, Mod)
         LinearLayout setupCard = card(dp);
-        cardTitle(setupCard, UiText.tr(this, "GAME FILES, UPDATE, DLC & KEYS", "FILE GAME, UPDATE, DLC & KEYS"), dp);
+        cardHeaderBadge(setupCard,
+                UiText.tr(this, "MAIN GAME & KEYS", "FILE UTAMA GAME & KEYS"),
+                UiText.tr(this, "REQUIRED", "WAJIB"),
+                0x2AF5C428, C_ACCENT, dp);
 
         LinearLayout filesPanel = panel(dp);
+        GradientDrawable mainPanelBg = new GradientDrawable();
+        mainPanelBg.setColor(0xFF11151F);
+        mainPanelBg.setCornerRadius(14 * dp);
+        mainPanelBg.setStroke((int) Math.max(1.5f, 1.5f * dp), 0x88F5C428);
+        filesPanel.setBackground(mainPanelBg);
+
         baseFileTv = new TextView(this);
         addFileSlotRow(filesPanel,
                 UiText.tr(this, "Base Game (.nsp / .xci)", "Base Game (.nsp / .xci)"),
@@ -349,8 +391,26 @@ public final class SetupActivity extends Activity {
                 v -> pickBaseGame(), null, dp);
         filesPanel.addView(divider(dp));
 
+        keysTv = new TextView(this);
+        addFileSlotRow(filesPanel,
+                UiText.tr(this, "Switch Keys (prod.keys)", "Switch Keys (prod.keys)"),
+                keysTv,
+                UiText.tr(this, "Choose", "Pilih"),
+                v -> pickKeys(), null, dp);
+        setupCard.addView(filesPanel, btnLp(dp));
+
+        LinearLayout optHdrWrap = new LinearLayout(this);
+        optHdrWrap.setOrientation(LinearLayout.VERTICAL);
+        optHdrWrap.setPadding(0, (int) (14 * dp), 0, (int) (2 * dp));
+        cardHeaderBadge(optHdrWrap,
+                UiText.tr(this, "ADD-ONS & MOD", "TAMBAHAN & MOD"),
+                UiText.tr(this, "OPTIONAL", "OPSIONAL"),
+                0xFF202634, C_SUB, dp);
+        setupCard.addView(optHdrWrap);
+
+        LinearLayout optPanel = panel(dp);
         updateFileTv = new TextView(this);
-        btnClearUpdate = addFileSlotRow(filesPanel,
+        btnClearUpdate = addFileSlotRow(optPanel,
                 UiText.tr(this, "Update (.nsp, Optional)", "Update (.nsp, Opsional)"),
                 updateFileTv,
                 UiText.tr(this, "Upload", "Pilih"),
@@ -361,10 +421,10 @@ public final class SetupActivity extends Activity {
                     allowDamagedOffer = false;
                     refreshUi();
                 }, dp);
-        filesPanel.addView(divider(dp));
+        optPanel.addView(divider(dp));
 
         dlcFilesTv = new TextView(this);
-        btnClearDlc = addFileSlotRow(filesPanel,
+        btnClearDlc = addFileSlotRow(optPanel,
                 UiText.tr(this, "DLC (.nsp, Optional)", "DLC (.nsp, Opsional)"),
                 dlcFilesTv,
                 UiText.tr(this, "Upload", "Pilih"),
@@ -375,15 +435,21 @@ public final class SetupActivity extends Activity {
                     allowDamagedOffer = false;
                     refreshUi();
                 }, dp);
-        filesPanel.addView(divider(dp));
+        optPanel.addView(divider(dp));
 
-        keysTv = new TextView(this);
-        addFileSlotRow(filesPanel,
-                UiText.tr(this, "Switch Keys (prod.keys)", "Switch Keys (prod.keys)"),
-                keysTv,
-                UiText.tr(this, "Choose", "Pilih"),
-                v -> pickKeys(), null, dp);
-        setupCard.addView(filesPanel, btnLp(dp));
+        modStatusTv = new TextView(this);
+        btnClearMod = addFileSlotRow(optPanel,
+                UiText.tr(this, "Mod / Translation (Optional)", "Mod / Bahasa Indonesia (Opsional)"),
+                modStatusTv,
+                UiText.tr(this, "Install", "Isi"),
+                v -> pickModFile(),
+                v -> {
+                    deleteTree(new File(GameSettings.gameDir(this), "mods/romfs"));
+                    GameSettings.syncModOverlay(this);
+                    toast(UiText.tr(this, "Mod removed.", "Mod dihapus."));
+                    refreshUi();
+                }, dp);
+        setupCard.addView(optPanel, btnLp(dp));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(400);
@@ -410,7 +476,12 @@ public final class SetupActivity extends Activity {
 
         LinearLayout runRow = new LinearLayout(this);
         runRow.setOrientation(LinearLayout.HORIZONTAL);
-        btnSetup = actionBtn(UiText.tr(this, "Set up Eastward", "Setup Eastward"), C_ACCENT, C_INK, dp, true);
+        btnSetup = actionBtn(UiText.tr(this, "Set up Eastward", "Setup / Ekstrak Eastward"), C_ACCENT, C_INK, dp, true);
+        GradientDrawable setupBg = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFFFFD84D, C_ACCENT, 0xFFE3A812});
+        setupBg.setCornerRadius(14 * dp);
+        btnSetup.setBackground(setupBg);
         btnSetup.setOnClickListener(v -> startSetup(false));
         runRow.addView(btnSetup, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -443,20 +514,34 @@ public final class SetupActivity extends Activity {
         saveCard.addView(saveRow, btnLp(dp));
         leftCol.addView(saveCard, cardLp(dp));
 
-        // Right Card 1: Vulkan Driver (Turnip / PanVK)
+        // Right Card 1: Vulkan Driver (Turnip / System)
         LinearLayout drvCard = card(dp);
-        cardTitle(drvCard, UiText.tr(this, "VULKAN GPU DRIVER (ADRENO TURNIP / MALI SYSTEM)", "DRIVER GPU VULKAN (ADRENO TURNIP / MALI)"), dp);
+        cardTitle(drvCard, UiText.tr(this, "VULKAN GPU DRIVER", "DRIVER GPU VULKAN"), dp);
+        deviceDetectTv = new TextView(this);
+        deviceDetectTv.setTextSize(11);
+        deviceDetectTv.setTypeface(Typeface.DEFAULT_BOLD);
+        deviceDetectTv.setPadding((int) (10 * dp), (int) (5 * dp), (int) (10 * dp), (int) (5 * dp));
+        LinearLayout.LayoutParams detLp = new LinearLayout.LayoutParams(-1, -2);
+        detLp.topMargin = (int) (4 * dp);
+        detLp.bottomMargin = (int) (6 * dp);
+        drvCard.addView(deviceDetectTv, detLp);
+
         driverTv = infoLine(drvCard, "", dp);
+        driverTv.setTextColor(C_TEXT);
+        driverTipTv = infoLine(drvCard, "", dp);
+        driverTipTv.setTextSize(11);
+        driverTipTv.setTextColor(C_SUB);
+        driverTipTv.setPadding((int) (10 * dp), (int) (7 * dp), (int) (10 * dp), (int) (7 * dp));
         LinearLayout drvRow = new LinearLayout(this);
         drvRow.setOrientation(LinearLayout.HORIZONTAL);
 
-        TextView btnPickDrv = actionBtn(UiText.tr(this, "Install Driver (.zip)", "Pasang Driver (.zip)"), C_CHIP, C_TEXT, dp, false);
+        btnPickDrv = actionBtn(UiText.tr(this, "Install Driver (.zip)", "Pasang Driver (.zip)"), C_CHIP, C_TEXT, dp, false);
         btnPickDrv.setOnClickListener(v -> pickDriver());
         LinearLayout.LayoutParams d1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         d1.rightMargin = (int) (8 * dp);
         drvRow.addView(btnPickDrv, d1);
 
-        TextView btnResetDrv = actionBtn(UiText.tr(this, "Use Phone Driver", "Pakai Driver Bawaan"), C_CHIP, C_SUB, dp, false);
+        btnResetDrv = actionBtn(UiText.tr(this, "Use Phone Driver", "Pakai Driver Bawaan"), C_CHIP, C_SUB, dp, false);
         btnResetDrv.setOnClickListener(v -> {
             DriverPackages.clearDriver(this);
             refreshUi();
@@ -467,33 +552,54 @@ public final class SetupActivity extends Activity {
         drvCard.addView(drvRow, btnLp(dp));
         rightCol.addView(drvCard, cardLp(dp));
 
-        // Right Card 2: Simplified Display & Game Settings (chipset internals are auto-configured)
+        // Right Card 2: Display & Performance Settings
         LinearLayout cfgCard = card(dp);
-        cardTitle(cfgCard, UiText.tr(this, "DISPLAY & GAME SETTINGS",
-                "PENGATURAN TAMPILAN & GAME"), dp);
+        cardTitle(cfgCard, UiText.tr(this, "DISPLAY & PERFORMANCE", "TAMPILAN & PERFORMA"), dp);
 
-        TextView autoInfo = infoLine(cfgCard,
-                UiText.tr(this, "Auto-Chipset Active: ", "Auto-Chipset Aktif: ") + GameSettings.detectedChipsetSummary(this), dp);
-        autoInfo.setTextColor(C_ACCENT);
+        boolean detAny = GameSettings.isMaliGpu(this) || GameSettings.isAdrenoGpu(this);
+        TextView autoInfo = new TextView(this);
+        autoInfo.setText((detAny
+                ? UiText.tr(this, "✓ DETECTED: ", "✓ HP TERDETEKSI: ")
+                : UiText.tr(this, "• AUTO PROFILE: ", "• PROFIL UMUM: "))
+                + GameSettings.detectedChipsetSummary(this));
+        autoInfo.setTextColor(detAny ? C_OK : C_WARN);
+        autoInfo.setTextSize(11);
+        autoInfo.setTypeface(Typeface.DEFAULT_BOLD);
+        autoInfo.setPadding((int) (10 * dp), (int) (6 * dp), (int) (10 * dp), (int) (6 * dp));
+        GradientDrawable autoBg = new GradientDrawable();
+        autoBg.setColor(detAny ? 0xFF111A16 : 0xFF1B160F);
+        autoBg.setCornerRadius(10 * dp);
+        autoBg.setStroke((int) Math.max(1, dp), detAny ? 0x446BE28A : 0x44FFB74D);
+        autoInfo.setBackground(autoBg);
+        cfgCard.addView(autoInfo, new LinearLayout.LayoutParams(-1, -2));
 
         addChoiceRow(cfgCard, UiText.tr(this, "Resolution", "Resolusi"), "DM_OPMODE", "0",
                 new String[]{UiText.tr(this, "720p Handheld", "720p Ringan"),
                         UiText.tr(this, "1080p Docked", "1080p Tajam")},
                 new String[]{"0", "1"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Pixel Quality (Render Scale)", "Kualitas Piksel (Skala Render)"), "DM_VK_FB_SCALE", "100",
-                new String[]{"100% Asli", "80% Pixel Tajam", "75% Lancar", "67% Ngebut"},
-                new String[]{"100", "80", "75", "67"}, dp);
+                new String[]{"100% Asli", "90% Tajam", "80% Lancar", "70% Ngebut"},
+                new String[]{"100", "90", "80", "70"}, dp);
+        addChoiceRow(cfgCard, UiText.tr(this, "Screen Size (Video Mode)", "Ukuran Layar (Rasio)"), "DM_SCREEN_MODE", "0",
+                new String[]{UiText.tr(this, "16:9 Fit", "16:9 Biasa"),
+                        UiText.tr(this, "Wide Full", "Wide Full")},
+                new String[]{"0", "1"}, dp);
         addChoiceRow(cfgCard, UiText.tr(this, "Game Language", "Bahasa Game"), "DM_LANG", "en-US",
                 new String[]{"English", "Japanese", "Chinese"}, new String[]{"en-US", "ja", "zh-Hans"}, dp);
 
         LinearLayout togPanel = panel(dp);
         addToggleRow(togPanel,
-                UiText.tr(this, "FP16 Shader Optimization", "Optimasi Shader FP16"),
-                UiText.tr(this, "Turn off only if visual glitches appear on your device", "Biarkan aktif; matikan hanya jika muncul glitch di HP tertentu"),
-                "DM_VK_MALI_FP16", true, dp);
+                UiText.tr(this, "Fast Post-FX Shaders (+FPS)", "Efek Post-FX Cepat (+FPS)"),
+                UiText.tr(this, "100% sharp visuals; cuts bloom/grain/sharpen GPU fetches in half", "Tetap 100% tajam tanpa burik; pangkas beban bloom, grain & filter layar"),
+                "DM_VK_FAST_FX", true, dp);
         togPanel.addView(divider(dp));
         addToggleRow(togPanel,
-                UiText.tr(this, "Unlock 30fps Swapchain (Exp)", "Bebas Lock 30fps (Eksperimen)"),
+                UiText.tr(this, "FP16 Shader Optimization", "Optimasi Shader FP16"),
+                UiText.tr(this, "Auto-on for Mali; off by default on Adreno to avoid shader glitches", "Otomatis aktif di Mali; mati default di Adreno agar bebas glitch visual"),
+                "DM_VK_MALI_FP16", !GameSettings.isAdrenoGpu(this), dp);
+        togPanel.addView(divider(dp));
+        addToggleRow(togPanel,
+                UiText.tr(this, "Unlock 30fps Swapchain", "Bebas Lock 30fps (Mailbox)"),
                 UiText.tr(this, "Use Mailbox/Relaxed VSync to avoid 30fps lock; turn off if flickering", "Pakai Mailbox/Relaxed agar tidak terkunci 30fps saat jalan; matikan jika berkedip"),
                 "DM_VK_MAILBOX", true, dp);
         togPanel.addView(divider(dp));
@@ -526,6 +632,9 @@ public final class SetupActivity extends Activity {
     private void refreshUi() {
         boolean ready = GameSettings.isReady(this);
         boolean hasAoc = new File(GameSettings.gameDir(this), "aoc").isDirectory();
+        String updSummary = GameSettings.installedUpdateSummary(this);
+        String gameVer = GameSettings.installedGameVersion(this);
+        boolean hasMod = GameSettings.hasModFiles(this);
         File ico = new File(GameSettings.gameDir(this), "icon.jpg");
         if (ico.isFile()) {
             Bitmap b = BitmapFactory.decodeFile(ico.getPath());
@@ -535,11 +644,15 @@ public final class SetupActivity extends Activity {
                 setTaskDescription(new ActivityManager.TaskDescription("Eastward Custom", b));
             }
         }
-        readyBadgeTv.setText(ready
-                ? (hasAoc
-                        ? UiText.tr(this, "Ready to play \u2022 DLC active (010071B00F63A000)", "Siap dimainkan \u2022 DLC aktif (010071B00F63A000)")
-                        : UiText.tr(this, "Ready to play (010071B00F63A000)", "Siap dimainkan (010071B00F63A000)"))
-                : UiText.tr(this, "Not set up yet \u2014 choose files below", "Belum di-setup \u2014 pilih file di bawah"));
+        if (ready) {
+            StringBuilder rb = new StringBuilder("\u25CF  ").append(UiText.tr(this, "Ready to play", "Siap dimainkan"));
+            if (!gameVer.isEmpty()) rb.append(" v").append(gameVer);
+            if (hasAoc) rb.append(" \u2022 DLC");
+            if (hasMod) rb.append(" \u2022 Mod");
+            readyBadgeTv.setText(rb.toString());
+        } else {
+            readyBadgeTv.setText("\u25CF  " + UiText.tr(this, "Not set up yet \u2014 pick Base Game & prod.keys", "Belum di-setup \u2014 pilih Base Game & prod.keys"));
+        }
         readyBadgeTv.setTextColor(ready ? Color.rgb(125, 235, 145) : Color.rgb(255, 200, 110));
         btnPlay.setEnabled(ready && !setupRunning);
         btnPlay.setAlpha(ready && !setupRunning ? 1f : 0.45f);
@@ -554,6 +667,10 @@ public final class SetupActivity extends Activity {
         if (basePath != null || baseUri != null) {
             baseFileTv.setText(basePath != null ? new File(basePath).getName() : queryName(baseUri));
             baseFileTv.setTextColor(C_OK);
+        } else if (ready) {
+            baseFileTv.setText(UiText.tr(this, "Installed & Ready", "Terpasang & Siap Main")
+                    + (!gameVer.isEmpty() ? (" (v" + gameVer + ")") : ""));
+            baseFileTv.setTextColor(C_OK);
         } else if (hasExtractedCodeAndRomfs()) {
             baseFileTv.setText(UiText.tr(this,
                     "Extracted & patched (ready for shaders)",
@@ -567,6 +684,9 @@ public final class SetupActivity extends Activity {
         boolean hasUpdate = updatePath != null || updateUri != null;
         if (hasUpdate) {
             updateFileTv.setText(updatePath != null ? new File(updatePath).getName() : queryName(updateUri));
+            updateFileTv.setTextColor(C_OK);
+        } else if (updSummary != null) {
+            updateFileTv.setText(UiText.tr(this, "Installed: ", "Terpasang: ") + updSummary);
             updateFileTv.setTextColor(C_OK);
         } else {
             updateFileTv.setText(UiText.tr(this, "None selected (optional)", "Belum ada (opsional)"));
@@ -590,7 +710,142 @@ public final class SetupActivity extends Activity {
         }
         if (btnClearDlc != null) btnClearDlc.setVisibility(dlcCount > 0 && !setupRunning ? View.VISIBLE : View.GONE);
 
+        if (modStatusTv != null) {
+            if (hasMod) {
+                int modCnt = GameSettings.countModFiles(this);
+                modStatusTv.setText(UiText.tr(this,
+                        "Mod active (" + modCnt + " file" + (modCnt == 1 ? "" : "s") + ")",
+                        "Mod aktif terpasang (" + modCnt + " file)"));
+                modStatusTv.setTextColor(C_OK);
+            } else {
+                modStatusTv.setText(UiText.tr(this, "Pick locale.g or mod .zip (optional)", "Pilih locale.g atau .zip mod (opsional)"));
+                modStatusTv.setTextColor(C_SUB);
+            }
+        }
+        if (btnClearMod != null) btnClearMod.setVisibility(hasMod && !setupRunning ? View.VISIBLE : View.GONE);
+
+        float dp = getResources().getDisplayMetrics().density;
+        boolean adreno = GameSettings.isAdrenoGpu(this);
+        boolean mali = GameSettings.isMaliGpu(this);
+        boolean customDrv = GameSettings.isCustomDriverSelected(this);
+        String phone = GameSettings.phoneModelLabel();
+        String gpuName = GameSettings.gpuDisplayName(this);
+        String gpuShow = (gpuName != null && !gpuName.isEmpty()) ? gpuName
+                : (adreno ? "Adreno GPU" : (mali ? "Mali GPU" : UiText.tr(this, "Auto Vulkan GPU", "GPU Vulkan Auto")));
+
+        if (deviceDetectTv != null) {
+            int bgCol = (adreno || mali) ? (adreno && !customDrv ? 0xFF1D180F : 0xFF111B16) : 0xFF181C24;
+            int strokeCol = (adreno || mali) ? (adreno && !customDrv ? 0x66F5C428 : 0x556BE28A) : 0x4497A1B3;
+            int txtCol = (adreno || mali) ? (adreno && !customDrv ? C_ACCENT : C_OK) : C_WARN;
+            GradientDrawable detBg = new GradientDrawable();
+            detBg.setColor(bgCol);
+            detBg.setCornerRadius(9 * dp);
+            detBg.setStroke((int) Math.max(1, dp), strokeCol);
+            deviceDetectTv.setBackground(detBg);
+            deviceDetectTv.setTextColor(txtCol);
+            if (adreno) {
+                deviceDetectTv.setText(UiText.tr(this,
+                        "✓ DETECTED: " + phone + " • " + gpuShow + " (Snapdragon / Adreno)",
+                        "✓ TERDETEKSI DI HP INI: " + phone + " • " + gpuShow + " (Snapdragon / Adreno)"));
+            } else if (mali) {
+                deviceDetectTv.setText(UiText.tr(this,
+                        "✓ DETECTED: " + phone + " • " + gpuShow + " (MediaTek / Mali)",
+                        "✓ TERDETEKSI DI HP INI: " + phone + " • " + gpuShow + " (MediaTek / Mali)"));
+            } else {
+                deviceDetectTv.setText(UiText.tr(this,
+                        "• UNIDENTIFIED GPU: " + phone + " • " + gpuShow,
+                        "• GPU BELUM TERIDENTIFIKASI: " + phone + " • " + gpuShow));
+            }
+        }
+
         driverTv.setText(UiText.tr(this, "Active: ", "Aktif: ") + GameSettings.driverLabel(this));
+        if (driverTipTv != null) {
+            GradientDrawable tipBg = new GradientDrawable();
+            tipBg.setCornerRadius(10 * dp);
+            if (adreno) {
+                if (customDrv) {
+                    tipBg.setColor(0xFF101914);
+                    tipBg.setStroke((int) Math.max(1, dp), 0x446BE28A);
+                    driverTipTv.setTextColor(C_OK);
+                    driverTipTv.setText(UiText.tr(this,
+                            "★ ADVICE FOR YOUR PHONE (Adreno • Turnip Active): Custom driver active! If glitches appear, try another Turnip version or switch back to Phone Driver.",
+                            "★ SARAN KHUSUS HP INI (Adreno • Driver Kustom Aktif): Sudah pakai driver kustom! Jika muncul glitch, coba versi Turnip lain atau kembali ke Driver Bawaan."));
+                } else {
+                    tipBg.setColor(0xFF1B160D);
+                    tipBg.setStroke((int) Math.max(1, dp), 0x55F5C428);
+                    driverTipTv.setTextColor(C_WARN);
+                    driverTipTv.setText(UiText.tr(this,
+                            "★ ADVICE FOR YOUR PHONE (Snapdragon / Adreno): Recommended to install Mesa Turnip (.zip, e.g. 3.0.3 / v24+) for higher FPS & fewer stock-driver glitches.",
+                            "★ SARAN KHUSUS HP INI (Snapdragon / Adreno): Disarankan pasang Mesa Turnip (.zip, mis. 3.0.3 / v24+) agar FPS lebih tinggi & lebih stabil. (Driver bawaan HP tetap aman)."));
+                }
+            } else if (mali) {
+                if (customDrv) {
+                    if (GameSettings.isTurnipSelected(this)) {
+                        tipBg.setColor(0xFF1F1412);
+                        tipBg.setStroke((int) Math.max(1, dp), 0x66FFB74D);
+                        driverTipTv.setTextColor(C_WARN);
+                        driverTipTv.setText(UiText.tr(this,
+                                "⚠ DRIVER MISMATCH (MediaTek / Mali): Turnip is for Snapdragon/Adreno. Switch to Phone Driver or a Mali PanVK/Panfrost driver (.zip).",
+                                "⚠ DRIVER KURANG COCOK (MediaTek / Mali): Turnip khusus Snapdragon/Adreno! Pakai Driver Bawaan HP atau driver Mali PanVK/Panfrost (.zip)."));
+                    } else {
+                        tipBg.setColor(0xFF101914);
+                        tipBg.setStroke((int) Math.max(1, dp), 0x446BE28A);
+                        driverTipTv.setTextColor(C_OK);
+                        driverTipTv.setText(UiText.tr(this,
+                                "★ ADVICE FOR YOUR PHONE (MediaTek / Mali • Custom Driver Active): PanVK / Panfrost Mali drivers (e.g. FristOneRR v3.70+) can help unlock FPS. Switch back to Phone Driver if glitches occur.",
+                                "★ SARAN KHUSUS HP INI (MediaTek / Mali • Driver Kustom Aktif): Driver Mali PanVK/Panfrost (mis. FristOneRR v3.70+) cocok untuk Mali. Kembali ke Driver Bawaan jika ada glitch."));
+                    }
+                } else {
+                    tipBg.setColor(0xFF101914);
+                    tipBg.setStroke((int) Math.max(1, dp), 0x446BE28A);
+                    driverTipTv.setTextColor(C_OK);
+                    driverTipTv.setText(UiText.tr(this,
+                            "★ ADVICE FOR YOUR PHONE (MediaTek / Mali): Phone Driver works out of the box. If still locked at 30fps on your device, try a Mali PanVK/Panfrost (.zip) like FristOneRR v3.70+ (do NOT use Turnip).",
+                            "★ SARAN KHUSUS HP INI (MediaTek / Mali): Driver Bawaan HP sudah aman dipakai. Jika di HP Anda masih ter-lock 30fps, bisa coba PanVK/Panfrost Mali (.zip) seperti FristOneRR v3.70+ (JANGAN pakai Turnip)."));
+                }
+            } else {
+                tipBg.setColor(0xFF151922);
+                tipBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+                driverTipTv.setTextColor(C_SUB);
+                driverTipTv.setText(UiText.tr(this,
+                        "• GENERAL TIP: Start with Phone System Driver. Once you launch the game once, this screen will lock onto your exact GPU recommendation.",
+                        "• SARAN UMUM: Pakai Driver Bawaan HP dulu. Setelah game dijalankan 1x, penanda HP & saran driver otomatis menyesuaikan GPU Anda."));
+            }
+            driverTipTv.setBackground(tipBg);
+        }
+        if (btnPickDrv != null && btnResetDrv != null) {
+            if (adreno && !customDrv) {
+                btnPickDrv.setText(UiText.tr(this, "Install Turnip (.zip) ★", "Pasang Turnip (.zip) ★"));
+                btnPickDrv.setTextColor(C_ACCENT);
+                btnResetDrv.setTextColor(C_SUB);
+            } else if (mali && !customDrv) {
+                btnPickDrv.setText(UiText.tr(this, "Install Driver (.zip)", "Pasang Driver (.zip)"));
+                btnPickDrv.setTextColor(C_SUB);
+                btnResetDrv.setTextColor(C_OK);
+            } else {
+                btnPickDrv.setText(UiText.tr(this, "Install Driver (.zip)", "Pasang Driver (.zip)"));
+                btnPickDrv.setTextColor(C_TEXT);
+                btnResetDrv.setTextColor(mali && customDrv && GameSettings.isTurnipSelected(this) ? C_WARN : C_TEXT);
+            }
+        }
+        boolean pendingFiles = basePath != null || baseUri != null || hasUpdate || dlcCount > 0;
+        if (ready && !pendingFiles) {
+            btnSetup.setText(UiText.tr(this, "Re-Setup / Update Files", "Setup Ulang / Tambah File"));
+            GradientDrawable secBg = new GradientDrawable();
+            secBg.setColor(C_CHIP);
+            secBg.setCornerRadius(14 * dp);
+            secBg.setStroke((int) Math.max(1, dp), C_CARD_LINE);
+            btnSetup.setBackground(secBg);
+            btnSetup.setTextColor(C_SUB);
+        } else {
+            btnSetup.setText(UiText.tr(this, "Set up Eastward", "Setup / Ekstrak Eastward"));
+            GradientDrawable setupBg = new GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{0xFFFFD84D, C_ACCENT, 0xFFE3A812});
+            setupBg.setCornerRadius(14 * dp);
+            btnSetup.setBackground(setupBg);
+            btnSetup.setTextColor(C_INK);
+        }
         btnSetup.setEnabled(!setupRunning);
         btnSetupAnyway.setVisibility(allowDamagedOffer && !setupRunning ? View.VISIBLE : View.GONE);
     }
@@ -616,6 +871,13 @@ public final class SetupActivity extends Activity {
                 .setType("*/*")
                 .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         startActivityForResult(i, REQ_DLC);
+    }
+
+    private void pickModFile() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        startActivityForResult(i, REQ_MOD);
     }
 
     private void pickKeys() {
@@ -723,6 +985,16 @@ public final class SetupActivity extends Activity {
                 toast(UiText.tr(this, "Installed driver: ", "Driver terpasang: ") + installed);
             } catch (Exception e) {
                 showError(UiText.tr(this, "Driver Install Failed", "Gagal Pasang Driver"), e.getMessage());
+            }
+            refreshUi();
+        } else if (req == REQ_MOD) {
+            try {
+                int count = installModUri(uris.get(0));
+                toast(UiText.tr(this,
+                        "Mod installed (" + count + " file" + (count == 1 ? "" : "s") + ").",
+                        "Mod terpasang (" + count + " file)."));
+            } catch (Exception e) {
+                showError(UiText.tr(this, "Mod Install Failed", "Gagal Pasang Mod"), e.getMessage());
             }
             refreshUi();
         } else if (req == REQ_LOG_EXPORT) {
@@ -969,6 +1241,8 @@ public final class SetupActivity extends Activity {
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 setupRunning = false;
                 if (finalErr == null && GameSettings.isReady(this)) {
+                    reconcileModPaths();
+                    GameSettings.syncModOverlay(this);
                     progressBar.setProgress(400);
                     statusTv.setText(UiText.tr(this, "Eastward setup complete! Ready to play.", "Setup Eastward selesai! Siap dimainkan."));
                     refreshUi();
@@ -981,6 +1255,126 @@ public final class SetupActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    private int installModUri(Uri uri) throws IOException {
+        String name = queryName(uri);
+        if (name == null || name.isEmpty()) name = "mod_file";
+        File gameDir = GameSettings.gameDir(this);
+        File modRomfs = new File(gameDir, "mods/romfs");
+        modRomfs.mkdirs();
+        File romfsDir = new File(gameDir, "RomFS");
+        int count = 0;
+
+        if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            String canonicalMod = modRomfs.getCanonicalPath() + File.separator;
+            byte[] buf = new byte[32768];
+            try (InputStream raw = getContentResolver().openInputStream(uri);
+                 ZipInputStream zis = raw != null ? new ZipInputStream(new BufferedInputStream(raw)) : null) {
+                if (zis == null) throw new IOException("Cannot read selected mod .zip");
+                ZipEntry e;
+                while ((e = zis.getNextEntry()) != null) {
+                    if (e.isDirectory()) continue;
+                    String rel = normalizeModEntryPath(e.getName());
+                    if (rel.isEmpty()) continue;
+                    File out = new File(modRomfs, rel);
+                    if (!out.getCanonicalPath().startsWith(canonicalMod)) continue;
+                    if (out.getParentFile() != null) out.getParentFile().mkdirs();
+                    try (FileOutputStream fos = new FileOutputStream(out)) {
+                        int n;
+                        while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                    }
+                    count++;
+                }
+            }
+            if (count == 0) throw new IOException("Mod .zip contains no files");
+        } else {
+            String rel = null;
+            if (romfsDir.isDirectory()) {
+                rel = findRelativeMatchInRomfs(romfsDir, name, "");
+            }
+            if (rel == null || rel.isEmpty()) {
+                rel = name.equalsIgnoreCase("locale.g") ? "game/locale.g" : name;
+            }
+            File out = new File(modRomfs, rel);
+            if (out.getParentFile() != null) out.getParentFile().mkdirs();
+            try (InputStream is = getContentResolver().openInputStream(uri);
+                 FileOutputStream fos = new FileOutputStream(out)) {
+                if (is == null) throw new IOException("Cannot read selected mod file");
+                copyStream(is, fos);
+            }
+            count = 1;
+        }
+        reconcileModPaths();
+        GameSettings.syncModOverlay(this);
+        return count;
+    }
+
+    private String normalizeModEntryPath(String rawName) {
+        String p = rawName.replace('\\', '/');
+        while (p.startsWith("/")) p = p.substring(1);
+        String lower = p.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("__macosx/") || lower.contains("/__macosx/")
+                || lower.endsWith("/.ds_store") || lower.equals(".ds_store")
+                || lower.endsWith("/thumbs.db") || lower.equals("thumbs.db")
+                || lower.endsWith("/desktop.ini") || lower.equals("desktop.ini")) {
+            return "";
+        }
+        int idx = lower.indexOf("/romfs/");
+        if (idx >= 0) {
+            p = p.substring(idx + "/romfs/".length());
+        } else if (lower.startsWith("mods/romfs/")) {
+            p = p.substring("mods/romfs/".length());
+        } else if (lower.startsWith("romfs/")) {
+            p = p.substring("romfs/".length());
+        }
+        String lower2 = p.toLowerCase(Locale.ROOT);
+        int gIdx = lower2.indexOf("/game/");
+        if (gIdx >= 0) {
+            p = p.substring(gIdx + 1);
+            lower2 = p.toLowerCase(Locale.ROOT);
+        }
+        if (lower2.equals("locale.g") || (lower2.endsWith("/locale.g") && !lower2.equals("game/locale.g"))) {
+            p = "game/locale.g";
+        }
+        return p;
+    }
+
+    private void reconcileModPaths() {
+        File gameDir = GameSettings.gameDir(this);
+        File modRomfs = new File(gameDir, "mods/romfs");
+        File romfsDir = new File(gameDir, "RomFS");
+        if (!modRomfs.isDirectory()) return;
+        File[] top = modRomfs.listFiles();
+        if (top == null) return;
+        for (File f : top) {
+            if (!f.isFile()) continue;
+            String rel = romfsDir.isDirectory() ? findRelativeMatchInRomfs(romfsDir, f.getName(), "") : null;
+            if (rel == null && f.getName().equalsIgnoreCase("locale.g")) {
+                rel = "game/locale.g";
+            }
+            if (rel != null && !rel.equals(f.getName())) {
+                File target = new File(modRomfs, rel);
+                if (target.getParentFile() != null) target.getParentFile().mkdirs();
+                if (!target.exists() || target.delete()) {
+                    f.renameTo(target);
+                }
+            }
+        }
+    }
+
+    private String findRelativeMatchInRomfs(File dir, String fileName, String prefix) {
+        File[] list = dir.listFiles();
+        if (list == null) return null;
+        for (File f : list) {
+            String rel = prefix.isEmpty() ? f.getName() : (prefix + "/" + f.getName());
+            if (f.isFile() && f.getName().equalsIgnoreCase(fileName)) return rel;
+            if (f.isDirectory()) {
+                String hit = findRelativeMatchInRomfs(f, fileName, rel);
+                if (hit != null) return hit;
+            }
+        }
+        return null;
     }
 
     private int setupWorkers() {
@@ -1144,9 +1538,39 @@ public final class SetupActivity extends Activity {
         d.setCornerRadius(18 * dp);
         d.setStroke((int) Math.max(1, dp), C_CARD_LINE);
         l.setBackground(d);
+        l.setElevation(4 * dp);
         int p = (int) (16 * dp);
         l.setPadding(p, (int) (14 * dp), p, (int) (14 * dp));
         return l;
+    }
+
+    private void cardHeaderBadge(LinearLayout p, String title, String badgeText, int badgeBg, int badgeFg, float dp) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, (int) (4 * dp));
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextColor(C_ACCENT);
+        t.setLetterSpacing(0.06f);
+        t.setTextSize(11);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        row.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView b = new TextView(this);
+        b.setText(badgeText);
+        b.setTextColor(badgeFg);
+        b.setTextSize(9);
+        b.setLetterSpacing(0.05f);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setPadding((int) (8 * dp), (int) (2 * dp), (int) (8 * dp), (int) (2 * dp));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(badgeBg);
+        bg.setCornerRadius(8 * dp);
+        b.setBackground(bg);
+        row.addView(b);
+        p.addView(row);
     }
 
     private LinearLayout.LayoutParams cardLp(float dp) {
@@ -1313,6 +1737,8 @@ public final class SetupActivity extends Activity {
             TextView b = new TextView(this);
             b.setText(labels[i]);
             b.setTextSize(12);
+            b.setSingleLine(true);
+            b.setEllipsize(android.text.TextUtils.TruncateAt.END);
             b.setTypeface(Typeface.DEFAULT_BOLD);
             b.setGravity(Gravity.CENTER);
             b.setPadding((int) (8 * dp), (int) (8 * dp), (int) (8 * dp), (int) (8 * dp));
